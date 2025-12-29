@@ -22,16 +22,25 @@ interface LeadsKanbanProps {
   onDelete: (id: string) => void;
   onConvert: (lead: Tables<'leads'>) => void;
   onView: (lead: Tables<'leads'>) => void;
+  onUpdateStatus?: (leadId: string, status: string) => void;
 }
 
-export function LeadsKanban({ leads, onEdit, onDelete, onConvert, onView }: LeadsKanbanProps) {
+export function LeadsKanban({ leads, onEdit, onDelete, onConvert, onView, onUpdateStatus }: LeadsKanbanProps) {
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-250px)]">
       {statusColumns.map((column) => {
         const columnLeads = leads.filter((lead) => lead.status === column.id);
         
         return (
-          <div key={column.id} className="min-w-[300px] flex flex-col h-full rounded-lg bg-muted/30 border">
+          <div
+            key={column.id}
+            className="min-w-[300px] flex flex-col h-full rounded-lg bg-muted/30 border"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              const leadId = e.dataTransfer.getData("leadId");
+              if (leadId && onUpdateStatus) onUpdateStatus(leadId, column.id);
+            }}
+          >
             <div className="p-3 border-b flex items-center justify-between bg-background/50 backdrop-blur sticky top-0 z-10">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className={column.color}>

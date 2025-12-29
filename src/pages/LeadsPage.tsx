@@ -152,12 +152,21 @@ export default function LeadsPage() {
   };
 
   const updateLeadStage = async (leadId: string, status: string) => {
+    const prevLeads = [...leads];
+    setLeads((ls) => ls.map((l) => (l.id === leadId ? { ...l, status } : l)));
     const { error } = await supabase.from("leads").update({ status }).eq("id", leadId);
     if (error) {
+      setLeads(prevLeads);
       toast({ title: "Error updating status", description: error.message, variant: "destructive" });
-    } else {
-      fetchLeads();
+      return;
     }
+    await supabase.from("activity_logs").insert([{
+      action: "lead_status_changed",
+      entity_type: "lead",
+      entity_id: leadId,
+      description: `Lead moved to ${status}`,
+      user_id: user?.id || null
+    }]);
   };
 
   const handleConvert = async (lead: Tables<'leads'>) => {
@@ -298,6 +307,7 @@ export default function LeadsPage() {
           onDelete={handleDelete}
           onConvert={handleConvert}
           onView={handleView}
+          onUpdateStatus={(leadId, status) => updateLeadStage(leadId, status)}
         />
       )}
 

@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Calendar, CheckCircle2, Circle, Pencil, User, Link, UserPlus, X } from "lucide-react";
+import { Plus, Search, Calendar, CheckCircle2, Circle, Pencil, User, Link, UserPlus, X, MessageSquare, Trash2, Play } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -362,8 +362,50 @@ export default function TasksPage() {
   }, [taskCollaborators]);
 
   const filteredTasks = tasks.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
-  const todoTasks = filteredTasks.filter((t) => t.status === "todo" || t.status === "in_progress");
-  const completedTasks = filteredTasks.filter((t) => t.status === "completed");
+  const statusColumns = [
+    { id: "todo", label: "To Do" },
+    { id: "in_progress", label: "In Progress" },
+    { id: "completed", label: "Completed" },
+    { id: "cancelled", label: "Cancelled" },
+  ];
+  const priorityBorder: Record<string, string> = {
+    low: "border-muted",
+    medium: "border-info",
+    high: "border-warning",
+    urgent: "border-destructive",
+  };
+  async function moveTask(taskId: string, status: string) {
+    const { error } = await supabase
+      .from("tasks")
+      .update({ status, completed_at: status === "completed" ? new Date().toISOString() : null })
+      .eq("id", taskId);
+    if (!error) {
+      await supabase.from("activity_logs").insert([{
+        action: "task_status_changed",
+        entity_type: "task",
+        entity_id: taskId,
+        description: `Task moved to ${status}`,
+        user_id: user?.id || null,
+      }]);
+      fetchTasks();
+    }
+  }
+  async function deleteTask(id: string) {
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      await supabase.from("activity_logs").insert([{
+        action: "task_deleted",
+        entity_type: "task",
+        entity_id: id,
+        description: "Task deleted",
+        user_id: user?.id || null,
+      }]);
+      toast({ title: "Task deleted" });
+      fetchTasks();
+    }
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -494,185 +536,170 @@ export default function TasksPage() {
       {loading ? (
         <p className="text-muted-foreground text-center py-8">Loading...</p>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-4">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Circle className="h-4 w-4" /> To Do ({todoTasks.length})
-            </h2>
-            {todoTasks.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No pending tasks</p>
-              ) : (
-                todoTasks.map((task) => (
-                  <Card key={task.id} className="hover:shadow-md transition-shadow"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      const uid = e.dataTransfer.getData("userId");
-                      if (uid) assignTask(task.id as string, uid);
-                    }}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
-                        <Checkbox checked={task.status === "completed"} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium truncate">{task.title}</h3>
-                            <Badge className={priorityColors[task.priority]}>{task.priority}</Badge>
-                          </div>
-                          {task.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
-                          {task.due_date && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
-                              <Calendar className="h-3 w-3" />{new Date(task.due_date).toLocaleDateString()}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 mt-2">
-                            {task.assigned_to && (
-                              <span className="text-xs text-muted-foreground">Owner</span>
-                            )}
-                            <div className="flex items-center gap-1">
-                              {(taskCollaborators[task.id as string] || []).map((uid) => {
-                                const p = profiles.find((pp) => pp.id === uid);
-                                const initials = (p?.full_name || p?.email || "U").slice(0, 2).toUpperCase();
-                                const canRemove = user?.id === task.assigned_to;
-                                return (
-                                  <div key={uid} className="relative">
-                                    <Avatar className="h-6 w-6">
-                                      <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
-                                    </Avatar>
-                                    {canRemove && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="absolute -top-1 -right-1 h-4 w-4"
-                                        onClick={() => removeCollaborator(task.id as string, uid)}
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          {(task.lead_id || task.deal_id) && (
-                            <div className="flex items-center gap-2 text-xs mt-2">
-                              {task.lead_id && (
-                                <span className="inline-flex items-center gap-1 text-muted-foreground"><Link className="h-3 w-3" />Lead</span>
-                              )}
-                              {task.deal_id && (
-                                <span className="inline-flex items-center gap-1 text-muted-foreground"><Link className="h-3 w-3" />Deal</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setEditingId(task.id);
-                              setFormData({
-                                title: task.title || "",
-                                description: task.description || "",
-                                priority: task.priority || "medium",
-                                status: task.status || "todo",
-                                due_date: task.due_date?.split("T")[0] || "",
-                                assigned_to: task.assigned_to || "",
-                                lead_id: task.lead_id || "",
-                                deal_id: task.deal_id || "",
-                              });
-                              setDialogOpen(true);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Select onValueChange={(v) => addCollaborator(task.id as string, v)}>
-                            <SelectTrigger className="w-[44px] justify-center">
-                              <UserPlus className="h-4 w-4" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {profiles.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {task.status !== "in_progress" && task.status !== "completed" && (
-                            <Button variant="secondary" size="sm" onClick={() => startTask(task)}>Start</Button>
-                          )}
-                          {task.status !== "completed" && (
-                            <Button variant="default" size="sm" onClick={() => completeTask(task)}>Complete</Button>
-                          )}
-                          <Dialog open={commentsOpenTaskId === task.id} onOpenChange={(open) => {
-                            setCommentsOpenTaskId(open ? (task.id as string) : null);
-                            if (open) fetchTaskMessages(task.id as string);
-                            if (!open) { setCommentText(""); setCommentMention(""); }
-                          }}>
-                            <DialogTrigger asChild>
-                              <Button variant="outline" size="sm">Comments</Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader><DialogTitle>Comments</DialogTitle></DialogHeader>
-                              <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-                                {(taskComments[task.id as string] || []).map((m) => {
-                                  const author = profiles.find((p) => p.id === m.author_id);
-                                  return (
-                                    <div key={m.id} className="p-2 rounded-md bg-muted/40">
-                                      <div className="text-sm">{m.content}</div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {(author?.full_name || author?.email || "User")} • {new Date(m.created_at).toLocaleString()}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+        <div className="flex gap-4 overflow-x-auto">
+          {statusColumns.map((col) => {
+            const colTasks = filteredTasks.filter((t) => t.status === col.id);
+            return (
+              <div
+                key={col.id}
+                className="w-80 flex-shrink-0 rounded-lg border bg-muted/30"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  const taskId = e.dataTransfer.getData("taskId");
+                  if (taskId) moveTask(taskId, col.id);
+                }}
+              >
+                <div className="sticky top-0 z-10 p-3 border-b bg-card/80 backdrop-blur flex items-center justify-between">
+                  <span className="text-sm font-medium">{col.label}</span>
+                  <Badge variant="secondary">{colTasks.length}</Badge>
+                </div>
+                <div className="p-2 space-y-2">
+                  {colTasks.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-4">No tasks</p>
+                  ) : (
+                    colTasks.map((task) => {
+                      const owner = profiles.find((p) => p.id === task.assigned_to);
+                      const borderClass = priorityBorder[task.priority] || "border-muted";
+                      return (
+                        <Card
+                          key={task.id}
+                          className={`bg-card shadow-sm cursor-move hover:shadow-md transition-shadow border ${borderClass} group`}
+                          draggable
+                          onDragStart={(e) => e.dataTransfer.setData("taskId", task.id as string)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            const uid = e.dataTransfer.getData("userId");
+                            if (uid) assignTask(task.id as string, uid);
+                          }}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Checkbox checked={task.status === "completed"} onCheckedChange={() => toggleTaskStatus(task)} />
+                                <Badge className={priorityColors[task.priority]}>{task.priority}</Badge>
                               </div>
-                              <div className="space-y-2">
-                                <Label>Add a comment</Label>
-                                <Textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} />
-                                <Label>Mention (optional)</Label>
-                                <Select value={commentMention} onValueChange={(v) => setCommentMention(v)}>
-                                  <SelectTrigger><SelectValue placeholder="Select user to mention" /></SelectTrigger>
+                            </div>
+                            <h3 className="font-medium mt-2">{task.title}</h3>
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <div className="inline-flex items-center gap-2 text-sm">
+                                <Calendar className="h-4 w-4" />
+                                {task.due_date ? new Date(task.due_date).toLocaleDateString() : "No deadline"}
+                              </div>
+                              <div />
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <div className="text-sm">
+                                {task.assigned_to ? (
+                                  <>Assigned to {owner?.full_name || owner?.email}</>
+                                ) : (
+                                  <>Unassigned</>
+                                )}
+                              </div>
+                              <div />
+                            </div>
+                            
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <div className="text-sm   text-muted-foreground">
+                                {(task.lead_id || task.deal_id) ? "Deal" : ""}
+                              </div>
+                              <div className="flex items-center gap-2 justify-end">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setEditingId(task.id);
+                                    setFormData({
+                                      title: task.title || "",
+                                      description: task.description || "",
+                                      priority: task.priority || "medium",
+                                      status: task.status || "todo",
+                                      due_date: task.due_date?.split("T")[0] || "",
+                                      assigned_to: task.assigned_to || "",
+                                      lead_id: task.lead_id || "",
+                                      deal_id: task.deal_id || "",
+                                    });
+                                    setDialogOpen(true);
+                                  }}
+                                  title="Edit"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Select onValueChange={(v) => assignTask(task.id as string, v)}>
+                                  <SelectTrigger className="w-[36px] justify-center" title="Assign">
+                                    <UserPlus className="h-24 w-24" />
+                                  </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="">None</SelectItem>
                                     {profiles.map((p) => (
                                       <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
-                                <Button onClick={() => postTaskMessage(task.id as string)} disabled={!commentText.trim()}>Post</Button>
+                                {/* {task.status !== "in_progress" && task.status !== "completed" && (
+                                  <Button variant="secondary" size="icon" onClick={() => startTask(task)} title="Start">
+                                    <Play className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {task.status !== "completed" && (
+                                  <Button variant="default" size="icon" onClick={() => completeTask(task)} title="Complete">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </Button>
+                                )} */}
+                                {/* <Dialog open={commentsOpenTaskId === task.id} onOpenChange={(open) => {
+                                  setCommentsOpenTaskId(open ? (task.id as string) : null);
+                                  if (open) fetchTaskMessages(task.id as string);
+                                  if (!open) { setCommentText(""); setCommentMention(""); }
+                                }}>
+                                  <DialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" title="Comments">
+                                      <MessageSquare className="h-4 w-4" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent>
+                                    <DialogHeader><DialogTitle>Comments</DialogTitle></DialogHeader>
+                                    <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                                      {(taskComments[task.id as string] || []).map((m) => {
+                                        const author = profiles.find((p) => p.id === m.author_id);
+                                        return (
+                                          <div key={m.id} className="p-2 rounded-md bg-muted/40">
+                                            <div className="text-sm">{m.content}</div>
+                                            <div className="text-xs text-muted-foreground">
+                                              {(author?.full_name || author?.email || "User")} • {new Date(m.created_at).toLocaleString()}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Add a comment</Label>
+                                      <Textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} />
+                                      <Label>Mention (optional)</Label>
+                                      <Select value={commentMention} onValueChange={(v) => setCommentMention(v)}>
+                                        <SelectTrigger><SelectValue placeholder="Select user to mention" /></SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="">None</SelectItem>
+                                          {profiles.map((p) => (
+                                            <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <Button onClick={() => postTaskMessage(task.id as string)} disabled={!commentText.trim()}>Post</Button>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog> */}
+                                <Button variant="destructive" size="icon" onClick={() => deleteTask(task.id as string)} title="Delete">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
                               </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-          </div>
-
-          <div className="space-y-4">
-            <h2 className="font-semibold flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-success" /> Completed ({completedTasks.length})
-            </h2>
-            {completedTasks.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No completed tasks</p>
-            ) : (
-              completedTasks.map((task) => (
-                <Card key={task.id} className="opacity-60 hover:opacity-100 transition-opacity">
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <Checkbox checked={true} onCheckedChange={() => toggleTaskStatus(task)} className="mt-1" />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium truncate line-through">{task.title}</h3>
-                        {task.completed_at && (
-                          <p className="text-xs text-muted-foreground mt-1">Completed {new Date(task.completed_at).toLocaleDateString()}</p>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

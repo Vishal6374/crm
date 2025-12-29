@@ -109,9 +109,9 @@ export function DealsKanban({ stages, employees = [], onDragOver, onDrop, onDrag
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(deal.id); }}>
                               <Trash2 className="mr-2 h-4 w-4" /> Delete
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onComments(deal.id); }}>
+                            {/* <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onComments(deal.id); }}>
                               <MessageSquare className="mr-2 h-4 w-4" /> Comments
-                            </DropdownMenuItem>
+                            </DropdownMenuItem> */}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
