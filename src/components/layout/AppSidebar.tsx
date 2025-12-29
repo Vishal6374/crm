@@ -26,10 +26,12 @@ import {
   Building,
   FileText,
   Activity,
+  MessageSquare,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Chat", href: "/chat", icon: MessageSquare },
   { name: "Leads", href: "/leads", icon: Target },
   { name: "Contacts", href: "/contacts", icon: UserCircle },
   { name: "Companies", href: "/companies", icon: Building2 },

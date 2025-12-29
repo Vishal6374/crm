@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Mail, Phone, Building, MoreHorizontal, Pencil, Trash2, Briefcase } from "lucide-react";
+import { Plus, Search, Mail, Phone, Building, MoreHorizontal, Pencil, Trash2, Briefcase, ArrowRightLeft, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +14,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Database } from "@/integrations/supabase/types";
 
+import { ContactDetailsSheet } from "@/components/contacts/ContactDetailsSheet";
+
 export default function ContactsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -22,7 +24,12 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [contactToConvert, setContactToConvert] = useState<(Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } }) | null>(null);
+  const [dealFormData, setDealFormData] = useState({ title: "", value: "", stage: "prospecting" });
   const [editingContact, setEditingContact] = useState<(Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } }) | null>(null);
+  const [selectedContact, setSelectedContact] = useState<(Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } }) | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -116,21 +123,36 @@ export default function ContactsPage() {
     fetchContacts();
   }
 
-  async function createDealForContact(contact: Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } }) {
-    const title = `${contact.first_name} ${contact.last_name}`.trim() || "New Deal";
+  function openConvertDialog(contact: Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } }) {
+    setContactToConvert(contact);
+    setDealFormData({
+      title: `${contact.first_name} ${contact.last_name} Deal`,
+      value: "",
+      stage: "prospecting"
+    });
+    setConvertDialogOpen(true);
+  }
+
+  async function confirmConvert(e: React.FormEvent) {
+    e.preventDefault();
+    if (!contactToConvert) return;
+
     const { error } = await supabase.from("deals").insert([{
-      title,
-      stage: "prospecting",
-      value: 0,
-      contact_id: contact.id,
-      company_id: contact.company_id || contact.companies?.id || null,
+      title: dealFormData.title,
+      stage: dealFormData.stage as "prospecting" | "qualification" | "proposal" | "negotiation" | "closed_won" | "closed_lost",
+      value: parseFloat(dealFormData.value) || 0,
+      contact_id: contactToConvert.id,
+      company_id: contactToConvert.company_id || contactToConvert.companies?.id || null,
       created_by: user?.id,
     }]);
+
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-      return;
+    } else {
+      toast({ title: "Deal created successfully" });
+      setConvertDialogOpen(false);
+      setContactToConvert(null);
     }
-    toast({ title: "Deal created for contact" });
   }
 
   const filteredContacts = contacts.filter((c) =>

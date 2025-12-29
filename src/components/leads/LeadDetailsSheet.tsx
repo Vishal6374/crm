@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Mail, Phone, Building, User, Calendar, DollarSign, Globe, FileText, Clock } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,8 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+import { Tables, TablesInsert } from "@/integrations/supabase/types";
+
 interface LeadDetailsSheetProps {
-  lead: any;
+  lead: Tables<'leads'> | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -29,22 +31,17 @@ const statusColors: Record<string, string> = {
 };
 
 export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetProps) {
-  const [activities, setActivities] = useState<any[]>([]);
+  const [activities, setActivities] = useState<Tables<'activity_logs'>[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
   const [comments, setComments] = useState<Array<{ id: string; content: string; created_at: string; author_id: string }>>([]);
   const [commentText, setCommentText] = useState("");
   const [commentMention, setCommentMention] = useState<string>("");
   const [profiles, setProfiles] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
 
-  useEffect(() => {
-    if (lead?.id && open) {
-      fetchActivities();
-      fetchComments();
-      fetchProfiles();
-    }
-  }, [lead?.id, open]);
-
-  async function fetchActivities() {
+  const fetchActivities = useCallback(async () => {
+    if (!lead) return;
     setLoadingActivities(true);
     const { data, error } = await supabase
       .from("activity_logs")
@@ -57,43 +54,55 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
       setActivities(data || []);
     }
     setLoadingActivities(false);
-  }
+  }, [lead]);
 
-  async function fetchComments() {
+  const fetchComments = useCallback(async () => {
+    if (!lead) return;
     const { data } = await supabase
       .from("messages")
-      .select("id, content, created_at, author_id")
+      .select("*")
       .eq("entity_type", "lead")
       .eq("entity_id", lead.id)
       .order("created_at", { ascending: false });
-    setComments((data || []) as Array<{ id: string; content: string; created_at: string; author_id: string }>);
-  }
+    setComments(data || []);
+  }, [lead]);
 
-  async function fetchProfiles() {
+  const fetchProfiles = useCallback(async () => {
     const { data } = await supabase
       .from("profiles")
       .select("id, full_name, email")
       .order("full_name");
-    setProfiles((data || []) as Array<{ id: string; full_name: string | null; email: string | null }>);
-  }
+    setProfiles(data || []);
+  }, []);
+
+  useEffect(() => {
+    if (lead?.id && open) {
+      fetchActivities();
+      fetchComments();
+      fetchProfiles();
+    }
+  }, [lead?.id, open, fetchActivities, fetchComments, fetchProfiles]);
 
   async function postComment() {
+    if (!lead) return;
     const mentions = commentMention ? [commentMention] : [];
-    const { error } = await supabase.from("messages").insert([{
+    const commentPayload: TablesInsert<'messages'> = {
       entity_type: "lead",
       entity_id: lead.id,
       author_id: lead.user_id || null,
       content: commentText,
       mentions,
-    }]);
+    };
+    const { error } = await supabase.from("messages").insert([commentPayload]);
     if (error) return;
-    await supabase.from("activity_logs").insert([{
+    const activityPayload: TablesInsert<'activity_logs'> = {
       action: "comment_added",
       entity_type: "lead",
       entity_id: lead.id,
       description: "Comment added to lead",
       user_id: lead.user_id || null,
-    }]);
+    };
+    await supabase.from("activity_logs").insert([activityPayload]);
     setCommentText("");
     setCommentMention("");
     fetchComments();

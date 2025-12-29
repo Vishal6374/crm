@@ -49,23 +49,60 @@ export default function PayrollPage() {
   }, []);
 
   async function fetchPayroll() {
-    const { data, error } = await supabase
+    const { data: payrollData, error } = await supabase
       .from("payroll")
-      .select("*, employees(employee_id, salary, profiles:user_id(full_name))")
+      .select("*")
       .order("year", { ascending: false })
       .order("month", { ascending: false })
       .limit(100);
-    if (!error) setPayroll(data || []);
+    
+    if (error) {
+      console.error("Error fetching payroll:", error);
+      return;
+    }
+
+    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id, salary");
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+
+    const joinedPayroll = payrollData.map(pay => {
+      const emp = empsData?.find(e => e.id === pay.employee_id);
+      const prof = profilesData?.find(p => p.id === emp?.user_id);
+      return {
+        ...pay,
+        employees: emp ? {
+          employee_id: emp.employee_id,
+          salary: emp.salary,
+          profiles: prof ? { full_name: prof.full_name } : null
+        } : undefined
+      };
+    });
+
+    setPayroll(joinedPayroll);
     setLoading(false);
   }
 
   async function fetchEmployees() {
-    const { data } = await supabase
+    const { data: empsData } = await supabase
       .from("employees")
-      .select("id, employee_id, salary, profiles:user_id(full_name)")
+      .select("id, employee_id, user_id, salary")
       .eq("status", "active")
       .order("employee_id");
-    if (data) setEmployees(data);
+    
+    if (!empsData) return;
+
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+
+    const joinedEmployees = empsData.map(emp => {
+      const prof = profilesData?.find(p => p.id === emp.user_id);
+      return {
+        id: emp.id,
+        employee_id: emp.employee_id,
+        salary: emp.salary,
+        profiles: prof ? { full_name: prof.full_name } : null
+      };
+    });
+
+    setEmployees(joinedEmployees);
   }
 
   async function createPayroll(e: React.FormEvent) {

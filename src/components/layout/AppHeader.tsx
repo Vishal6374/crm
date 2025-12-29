@@ -1,4 +1,4 @@
-import { Bell, Search, User, Check } from "lucide-react";
+import { Bell, Search, User, Check, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,34 +11,60 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/components/theme-provider";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export function AppHeader() {
   const { user, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Array<{ id: string; title: string | null; body: string | null; read: boolean; created_at: string }>>([]);
+  const [notifications, setNotifications] = useState<Array<{ id: string; title: string | null; body: string | null; read: boolean; created_at: string; entity_type: string | null; entity_id: string | null }>>([]);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const userInitials = user?.email?.slice(0, 2).toUpperCase() || "U";
 
-  async function fetchNotifications() {
+  const fetchNotifications = useCallback(async () => {
     if (!user?.id) return;
     const { data } = await supabase
       .from("notifications")
-      .select("id, title, body, read, created_at")
+      .select("id, title, body, read, created_at, entity_type, entity_id")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20);
     setNotifications(data || []);
-  }
+  }, [user?.id]);
 
   async function markAllRead() {
     if (!user?.id) return;
     await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
     fetchNotifications();
   }
+
+  type NotificationItem = {
+    id: string;
+    title: string | null;
+    body: string | null;
+    read: boolean;
+    created_at: string;
+    entity_type: string | null;
+    entity_id: string | null;
+  };
+
+  const handleNotificationClick = async (n: NotificationItem) => {
+    // Mark as read if not already
+    if (!n.read) {
+      await supabase.from("notifications").update({ read: true }).eq("id", n.id);
+      // Optimistic update
+      setNotifications(prev => prev.map(notif => notif.id === n.id ? { ...notif, read: true } : notif));
+    }
+
+    // Navigate based on entity type
+    if (n.entity_type === 'chat_channel' && n.entity_id) {
+      navigate(`/chat?channelId=${n.entity_id}`);
+    }
+  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -54,7 +80,7 @@ export function AppHeader() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, fetchNotifications]);
 
   return (
     <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6">
@@ -71,6 +97,11 @@ export function AppHeader() {
 
       {/* Right side */}
       <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+          <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative">
@@ -90,7 +121,7 @@ export function AppHeader() {
               <div className="px-2 py-4 text-sm text-muted-foreground">No notifications</div>
             ) : (
               notifications.map((n) => (
-                <DropdownMenuItem key={n.id} className="flex flex-col items-start">
+                <DropdownMenuItem key={n.id} className="flex flex-col items-start cursor-pointer" onClick={() => handleNotificationClick(n)}>
                   <div className="flex items-center justify-between w-full">
                     <span className="font-medium text-sm">{n.title || "Notification"}</span>
                     {!n.read && <span className="h-2 w-2 rounded-full bg-destructive" />}
@@ -103,29 +134,22 @@ export function AppHeader() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 pl-2 pr-3">
+            <Button variant="ghost" className="relative h-8 w-8 rounded-full">
               <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                  {userInitials}
-                </AvatarFallback>
+                <AvatarFallback>{userInitials}</AvatarFallback>
               </Avatar>
-              <span className="text-sm font-medium hidden sm:inline-block">
-                {user?.email?.split("@")[0]}
-              </span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate("/settings")}>
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={signOut} className="text-destructive">
+            <DropdownMenuItem onClick={() => signOut()}>
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

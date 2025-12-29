@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Pencil, UserCheck, Trash2, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tables } from "@/integrations/supabase/types";
 
 const statusColumns = [
   { id: "new", label: "New", color: "bg-info/10 text-info" },
@@ -16,11 +17,11 @@ const statusColumns = [
 ];
 
 interface LeadsKanbanProps {
-  leads: any[];
-  onEdit: (lead: any) => void;
+  leads: Tables<'leads'>[];
+  onEdit: (lead: Tables<'leads'>) => void;
   onDelete: (id: string) => void;
-  onConvert: (lead: any) => void;
-  onView: (lead: any) => void;
+  onConvert: (lead: Tables<'leads'>) => void;
+  onView: (lead: Tables<'leads'>) => void;
 }
 
 export function LeadsKanban({ leads, onEdit, onDelete, onConvert, onView }: LeadsKanbanProps) {
@@ -43,12 +44,22 @@ export function LeadsKanban({ leads, onEdit, onDelete, onConvert, onView }: Lead
             <ScrollArea className="flex-1 p-3">
               <div className="space-y-3">
                 {columnLeads.map((lead) => (
-                  <Card key={lead.id} className="cursor-pointer hover:shadow-md transition-shadow group">
+                  <Card 
+                    key={lead.id} 
+                    className="cursor-pointer hover:shadow-md transition-shadow group"
+                    draggable
+                    onDragStart={(e) => e.dataTransfer.setData("leadId", lead.id)}
+                  >
                     <CardContent className="p-4 space-y-3">
                       <div className="flex justify-between items-start">
                         <div className="space-y-1">
                           <h4 className="font-semibold text-sm">{lead.company_name || lead.title}</h4>
                           <p className="text-xs text-muted-foreground">{lead.contact_name}</p>
+                          {lead.assigned_to_profile && (
+                             <p className="text-xs text-primary flex items-center gap-1">
+                               {lead.assigned_to_profile.full_name}
+                             </p>
+                          )}
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

@@ -50,21 +50,56 @@ export default function LeaveRequestsPage() {
   }, []);
 
   async function fetchLeaveRequests() {
-    const { data, error } = await supabase
+    const { data: requestsData, error } = await supabase
       .from("leave_requests")
-      .select("*, employees(employee_id, profiles:user_id(full_name))")
+      .select("*")
       .order("created_at", { ascending: false });
-    if (!error) setLeaveRequests(data || []);
+    
+    if (error) {
+      console.error("Error fetching leave requests:", error);
+      return;
+    }
+
+    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+
+    const joinedRequests = requestsData.map(req => {
+      const emp = empsData?.find(e => e.id === req.employee_id);
+      const prof = profilesData?.find(p => p.id === emp?.user_id);
+      return {
+        ...req,
+        employees: emp ? {
+          employee_id: emp.employee_id,
+          profiles: prof ? { full_name: prof.full_name } : null
+        } : undefined
+      };
+    });
+
+    setLeaveRequests(joinedRequests);
     setLoading(false);
   }
 
   async function fetchEmployees() {
-    const { data } = await supabase
+    const { data: empsData } = await supabase
       .from("employees")
-      .select("id, employee_id, profiles:user_id(full_name)")
+      .select("id, employee_id, user_id")
       .eq("status", "active")
       .order("employee_id");
-    if (data) setEmployees(data);
+    
+    if (!empsData) return;
+
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+
+    const joinedEmployees = empsData.map(emp => {
+      const prof = profilesData?.find(p => p.id === emp.user_id);
+      return {
+        id: emp.id,
+        employee_id: emp.employee_id,
+        profiles: prof ? { full_name: prof.full_name } : null
+      };
+    });
+
+    setEmployees(joinedEmployees);
   }
 
   async function createLeaveRequest(e: React.FormEvent) {

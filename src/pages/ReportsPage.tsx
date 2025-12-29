@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Briefcase, DollarSign, TrendingUp, CheckCircle, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,9 +17,9 @@ export default function ReportsPage() {
     totalRevenue: 0,
     pendingPayroll: 0,
   });
-  const [leadsByStatus, setLeadsByStatus] = useState<any[]>([]);
-  const [dealsByStage, setDealsByStage] = useState<any[]>([]);
-  const [monthlyPayroll, setMonthlyPayroll] = useState<any[]>([]);
+  const [leadsByStatus, setLeadsByStatus] = useState<{ name: string; value: number }[]>([]);
+  const [dealsByStage, setDealsByStage] = useState<{ name: string; value: number }[]>([]);
+  const [monthlyPayroll, setMonthlyPayroll] = useState<{ month: string; total: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,17 +51,19 @@ export default function ReportsPage() {
     });
 
     // Leads by status
-    const leadStatusCounts = leads.reduce((acc: any, lead) => {
-      acc[lead.status] = (acc[lead.status] || 0) + 1;
+    const leadStatusCounts = leads.reduce((acc: Record<string, number>, lead) => {
+      const status = lead.status || "Unknown";
+      acc[status] = (acc[status] || 0) + 1;
       return acc;
-    }, {});
+    }, {} as Record<string, number>);
     setLeadsByStatus(Object.entries(leadStatusCounts).map(([name, value]) => ({ name, value })));
 
     // Deals by stage
-    const dealStageCounts = deals.reduce((acc: any, deal) => {
-      acc[deal.stage] = (acc[deal.stage] || 0) + Number(deal.value || 0);
+    const dealStageCounts = deals.reduce((acc: Record<string, number>, deal) => {
+      const stage = deal.stage || "Unknown";
+      acc[stage] = (acc[stage] || 0) + Number(deal.value || 0);
       return acc;
-    }, {});
+    }, {} as Record<string, number>);
     setDealsByStage(Object.entries(dealStageCounts).map(([name, value]) => ({ name: name.replace("_", " "), value })));
 
     // Monthly payroll

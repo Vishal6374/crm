@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { startOfWeek, endOfWeek, subMonths, format, eachDayOfInterval, isSameDay } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Target,
@@ -66,31 +68,6 @@ function StatCard({ title, value, change, trend, icon }: StatCardProps) {
   );
 }
 
-const revenueData = [
-  { month: "Jan", value: 4000 },
-  { month: "Feb", value: 3000 },
-  { month: "Mar", value: 5000 },
-  { month: "Apr", value: 4500 },
-  { month: "May", value: 6000 },
-  { month: "Jun", value: 5500 },
-];
-
-const dealStageData = [
-  { name: "Prospecting", value: 12, color: "hsl(217, 91%, 60%)" },
-  { name: "Qualification", value: 8, color: "hsl(142, 76%, 36%)" },
-  { name: "Proposal", value: 15, color: "hsl(38, 92%, 50%)" },
-  { name: "Negotiation", value: 6, color: "hsl(280, 87%, 65%)" },
-  { name: "Closed Won", value: 10, color: "hsl(142, 76%, 46%)" },
-];
-
-const taskData = [
-  { name: "Mon", completed: 8, pending: 3 },
-  { name: "Tue", completed: 12, pending: 5 },
-  { name: "Wed", completed: 6, pending: 4 },
-  { name: "Thu", completed: 10, pending: 2 },
-  { name: "Fri", completed: 15, pending: 6 },
-];
-
 export default function DashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState({
@@ -100,15 +77,25 @@ export default function DashboardPage() {
     tasks: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [revenueData, setRevenueData] = useState<{ month: string; value: number }[]>([]);
+  const [dealStageData, setDealStageData] = useState<{ name: string; value: number; color: string }[]>([]);
+  const [taskData, setTaskData] = useState<{ name: string; completed: number; pending: number }[]>([]);
 
   useEffect(() => {
     async function fetchStats() {
       try {
-        const [leadsRes, dealsRes, employeesRes, tasksRes] = await Promise.all([
+        const today = new Date();
+        const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
+        const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
+        const sixMonthsAgo = subMonths(today, 6);
+
+        const [leadsRes, dealsRes, employeesRes, tasksRes, revenueDealsRes, weekTasksRes] = await Promise.all([
           supabase.from("leads").select("id", { count: "exact", head: true }),
-          supabase.from("deals").select("id", { count: "exact", head: true }),
+          supabase.from("deals").select("id, stage, value", { count: "exact" }),
           supabase.from("employees").select("id", { count: "exact", head: true }),
-          supabase.from("tasks").select("id", { count: "exact", head: true }),
+          supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
+          supabase.from("deals").select("value, created_at").eq("stage", "closed_won").gte("created_at", sixMonthsAgo.toISOString()),
+          supabase.from("tasks").select("status, due_date").gte("due_date", startOfCurrentWeek.toISOString()).lte("due_date", endOfCurrentWeek.toISOString())
         ]);
 
         setStats({
@@ -117,6 +104,67 @@ export default function DashboardPage() {
           employees: employeesRes.count || 0,
           tasks: tasksRes.count || 0,
         });
+
+        // Process Deal Stages
+        if (dealsRes.data) {
+          const stageColors: Record<string, string> = {
+            prospecting: "hsl(217, 91%, 60%)",
+            qualification: "hsl(142, 76%, 36%)",
+            proposal: "hsl(38, 92%, 50%)",
+            negotiation: "hsl(280, 87%, 65%)",
+            closed_won: "hsl(142, 76%, 46%)",
+            closed_lost: "hsl(0, 84%, 60%)",
+          };
+
+          const stages = ["prospecting", "qualification", "proposal", "negotiation", "closed_won"];
+          const dealsData = (dealsRes.data || []) as Tables<'deals'>[];
+          const pipeline = stages.map(stage => ({
+            name: stage.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+            value: dealsData.filter((d) => d.stage === stage).length,
+            color: stageColors[stage] || "hsl(0, 0%, 50%)"
+          })).filter(d => d.value > 0);
+          setDealStageData(pipeline);
+        }
+
+        // Process Revenue
+        if (revenueDealsRes.data) {
+          const last6Months = Array.from({ length: 6 }, (_, i) => {
+            const date = subMonths(today, 5 - i);
+            return {
+              month: format(date, "MMM"),
+              year: date.getFullYear(),
+              monthIndex: date.getMonth(),
+              value: 0
+            };
+          });
+
+          const revenueDeals = (revenueDealsRes.data || []) as Tables<'deals'>[];
+          revenueDeals.forEach((deal) => {
+            const date = new Date(deal.created_at);
+            const monthEntry = last6Months.find(m => m.monthIndex === date.getMonth() && m.year === date.getFullYear());
+            if (monthEntry) {
+              monthEntry.value += Number(deal.value) || 0;
+            }
+          });
+
+          setRevenueData(last6Months.map(({ month, value }) => ({ month, value })));
+        }
+
+        // Process Weekly Tasks
+        if (weekTasksRes.data) {
+          const weekDays = eachDayOfInterval({ start: startOfCurrentWeek, end: endOfCurrentWeek });
+          const tasksWeek = (weekTasksRes.data || []) as Tables<'tasks'>[];
+          const weekly = weekDays.map(day => {
+            const dayTasks = tasksWeek.filter((t) => t.due_date && isSameDay(new Date(t.due_date), day));
+            return {
+              name: format(day, "EEE"),
+              completed: dayTasks.filter((t) => t.status === "completed").length,
+              pending: dayTasks.filter((t) => t.status !== "completed").length
+            };
+          });
+          setTaskData(weekly);
+        }
+
       } catch (error) {
         console.error("Error fetching stats:", error);
       } finally {

@@ -9,9 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+import { Tables } from "@/integrations/supabase/types";
+
 export default function DepartmentsPage() {
   const { toast } = useToast();
-  const [departments, setDepartments] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<(Tables<'departments'> & { employees: { count: number }[] })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -33,7 +35,7 @@ export default function DepartmentsPage() {
 
   async function createDepartment(e: React.FormEvent) {
     e.preventDefault();
-    const { error } = await supabase.from("departments").insert([formData]);
+    const { error } = await supabase.from("departments").insert([formData] as Database['public']['Tables']['departments']['Insert'][]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {

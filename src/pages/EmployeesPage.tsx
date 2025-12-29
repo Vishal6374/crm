@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Phone, Mail } from "lucide-react";
+import { Plus, Search, Phone, Mail, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EmployeeDetailsSheet, EmployeeWithDetails } from "@/components/employees/EmployeeDetailsSheet";
+import { Tables } from "@/integrations/supabase/types";
 
 const statusColors: Record<string, string> = {
   active: "bg-success/10 text-success",
@@ -19,13 +21,15 @@ const statusColors: Record<string, string> = {
 
 export default function EmployeesPage() {
   const { toast } = useToast();
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
-  const [designations, setDesignations] = useState<any[]>([]);
-  const [profiles, setProfiles] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<EmployeeWithDetails[]>([]);
+  const [departments, setDepartments] = useState<Tables<'departments'>[]>([]);
+  const [designations, setDesignations] = useState<Tables<'designations'>[]>([]);
+  const [profiles, setProfiles] = useState<Tables<'profiles'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeWithDetails | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [formData, setFormData] = useState({
     employee_id: "",
     user_id: "",
@@ -38,36 +42,58 @@ export default function EmployeesPage() {
     status: "active",
   });
 
+  const fetchEmployees = useCallback(async () => {
+    const { data: employeesData, error } = await supabase
+      .from("employees")
+      .select("*")
+      .order("created_at", { ascending: false });
+    
+    if (error) {
+        console.error("Error fetching employees:", error);
+        toast({ title: "Error", description: "Failed to load employees", variant: "destructive" });
+        setLoading(false);
+        return;
+    }
+
+    // Fetch related data manually to avoid foreign key relationship errors
+    const [deptRes, desigRes, profRes] = await Promise.all([
+      supabase.from("departments").select("*"),
+      supabase.from("designations").select("*"),
+      supabase.from("profiles").select("*")
+    ]);
+
+    const joinedEmployees = employeesData.map(emp => ({
+      ...emp,
+      departments: deptRes.data?.find(d => d.id === emp.department_id) || null,
+      designations: desigRes.data?.find(d => d.id === emp.designation_id) || null,
+      profiles: profRes.data?.find(p => p.id === emp.user_id) || null
+    }));
+
+    setEmployees(joinedEmployees);
+    setLoading(false);
+  }, [toast]);
+
+  const fetchDepartments = useCallback(async () => {
+    const { data } = await supabase.from("departments").select("id, name").order("name");
+    if (data) setDepartments(data);
+  }, []);
+
+  const fetchDesignations = useCallback(async () => {
+    const { data } = await supabase.from("designations").select("id, title").order("title");
+    if (data) setDesignations(data);
+  }, []);
+
+  const fetchProfiles = useCallback(async () => {
+    const { data } = await supabase.from("profiles").select("id, full_name, email").order("full_name");
+    if (data) setProfiles(data);
+  }, []);
+
   useEffect(() => {
     fetchEmployees();
     fetchDepartments();
     fetchDesignations();
     fetchProfiles();
-  }, []);
-
-  async function fetchEmployees() {
-    const { data, error } = await supabase
-      .from("employees")
-      .select("*, departments(name), designations(title), profiles:user_id(full_name, email)")
-      .order("created_at", { ascending: false });
-    if (!error) setEmployees(data || []);
-    setLoading(false);
-  }
-
-  async function fetchDepartments() {
-    const { data } = await supabase.from("departments").select("id, name").order("name");
-    if (data) setDepartments(data);
-  }
-
-  async function fetchDesignations() {
-    const { data } = await supabase.from("designations").select("id, title").order("title");
-    if (data) setDesignations(data);
-  }
-
-  async function fetchProfiles() {
-    const { data } = await supabase.from("profiles").select("id, full_name, email").order("full_name");
-    if (data) setProfiles(data);
-  }
+  }, [fetchEmployees, fetchDepartments, fetchDesignations, fetchProfiles]);
 
   async function createEmployee(e: React.FormEvent) {
     e.preventDefault();
@@ -177,7 +203,14 @@ export default function EmployeesPage() {
           <p className="text-muted-foreground col-span-full text-center py-8">No employees found</p>
         ) : (
           filteredEmployees.map((emp) => (
-            <Card key={emp.id} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={emp.id} 
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => {
+                setSelectedEmployee(emp);
+                setDetailsOpen(true);
+              }}
+            >
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
                   <Avatar className="h-12 w-12">
@@ -211,6 +244,12 @@ export default function EmployeesPage() {
           ))
         )}
       </div>
+
+      <EmployeeDetailsSheet 
+        employee={selectedEmployee}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+      />
     </div>
   );
 }

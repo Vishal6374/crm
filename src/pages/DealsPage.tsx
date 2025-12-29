@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, DollarSign, MoreHorizontal, Pencil, Trash2, CheckCircle, XCircle, MoveHorizontal, MessageSquare } from "lucide-react";
+import { Plus, DollarSign, LayoutList, LayoutGrid, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -11,8 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Database } from "@/integrations/supabase/types";
+import { DealsTable } from "@/components/deals/DealsTable";
+import { DealsKanban } from "@/components/deals/DealsKanban";
+import { DealDetailsSheet } from "@/components/deals/DealDetailsSheet";
 
 const stages = [
   { value: "prospecting", label: "Prospecting", color: "bg-muted text-muted-foreground" },
@@ -26,11 +28,15 @@ const stages = [
 export default function DealsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [deals, setDeals] = useState<(Database["public"]["Tables"]["deals"]["Row"] & { companies?: { name: string }, contacts?: { first_name: string, last_name: string } })[]>([]);
+  const [deals, setDeals] = useState<(Database["public"]["Tables"]["deals"]["Row"] & { companies?: { name: string }, contacts?: { first_name: string, last_name: string }, assigned_to_profile?: { full_name: string } })[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [contacts, setContacts] = useState<{ id: string; first_name: string; last_name: string }[]>([]);
+  const [employees, setEmployees] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"table" | "kanban">("kanban");
+  const [selectedDeal, setSelectedDeal] = useState<(Database["public"]["Tables"]["deals"]["Row"] & { companies?: { name: string }, contacts?: { first_name: string, last_name: string }, assigned_to_profile?: { full_name: string } }) | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [commentsOpenDealId, setCommentsOpenDealId] = useState<string | null>(null);
   const [dealComments, setDealComments] = useState<Record<string, Array<{ id: string; content: string; created_at: string; author_id: string }>>>({});
   const [commentText, setCommentText] = useState("");
@@ -50,14 +56,40 @@ export default function DealsPage() {
     fetchDeals();
     fetchCompanies();
     fetchContacts();
+    fetchEmployees();
   }, []);
 
+  async function fetchEmployees() {
+    const { data } = await supabase.from("profiles").select("id, full_name, email");
+    if (data) setEmployees(data);
+  }
+
   async function fetchDeals() {
-    const { data, error } = await supabase
+    const { data: dealsData, error } = await supabase
       .from("deals")
-      .select("*, companies(name), contacts(first_name, last_name)")
+      .select("*")
       .order("created_at", { ascending: false });
-    if (!error) setDeals(data || []);
+    
+    if (error) {
+      console.error("Error fetching deals:", error);
+      return;
+    }
+
+    // Manual join to avoid FK issues
+    const [compRes, contRes, profRes] = await Promise.all([
+      supabase.from("companies").select("id, name"),
+      supabase.from("contacts").select("id, first_name, last_name"),
+      supabase.from("profiles").select("id, full_name")
+    ]);
+
+    const joinedDeals = dealsData.map(deal => ({
+      ...deal,
+      companies: compRes.data?.find(c => c.id === deal.company_id) || undefined,
+      contacts: contRes.data?.find(c => c.id === deal.contact_id) || undefined,
+      assigned_to_profile: profRes.data?.find(p => p.id === deal.assigned_to) || undefined
+    }));
+
+    setDeals(joinedDeals);
     setLoading(false);
   }
 
@@ -83,6 +115,7 @@ export default function DealsPage() {
       contact_id: formData.contact_id || null,
       expected_close_date: formData.expected_close_date || null,
       created_by: user?.id,
+      assigned_to: user?.id, // Default assign to creator
     }]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -182,6 +215,30 @@ export default function DealsPage() {
     fetchDeals();
   }
 
+  async function handleAssign(dealId: string, userId: string) {
+    const { error } = await supabase.from("deals").update({ assigned_to: userId }).eq("id", dealId);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    toast({ title: "Deal assigned successfully" });
+
+    if (userId !== user?.id) {
+      sendDirectMessage(user?.id || "", userId, `You have been assigned to deal #${dealId}`);
+    }
+
+    await supabase.from("activity_logs").insert([{
+      action: "deal_assigned",
+      entity_type: "deal",
+      entity_id: dealId,
+      description: "Deal assigned",
+      user_id: user?.id || null,
+    }]);
+
+    fetchDeals();
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -234,84 +291,60 @@ export default function DealsPage() {
         </Dialog>
       </div>
 
+      <div className="flex items-center justify-between mb-4">
+        <Button variant="outline" size="sm" onClick={() => {
+          const csv = ["Title,Value,Stage,Probability", ...deals.map(d => `"${d.title}",${d.value},${d.stage},${d.probability}`)].join("\n");
+          const blob = new Blob([csv], { type: "text/csv" });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "deals.csv";
+          a.click();
+        }}>
+          <Download className="mr-2 h-4 w-4" /> Export CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setViewMode(viewMode === "table" ? "kanban" : "table")}>
+          {viewMode === "table" ? <LayoutGrid className="mr-2 h-4 w-4" /> : <LayoutList className="mr-2 h-4 w-4" />}
+          {viewMode === "table" ? "Kanban" : "Table"}
+        </Button>
+      </div>
+
       {loading ? (
         <p className="text-muted-foreground text-center py-8">Loading...</p>
+      ) : viewMode === "table" ? (
+        <DealsTable 
+          deals={deals}
+          employees={employees}
+          onEdit={(deal) => { /* Implement edit open */ }}
+          onDelete={deleteDeal}
+          onView={(deal) => { setSelectedDeal(deal); setDetailsOpen(true); }}
+          onAssign={handleAssign}
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <div className="flex gap-4 px-1 pb-2">
-            {dealsByStage.map((stage) => (
-              <div
-                key={stage.value}
-                className="w-72 flex-shrink-0 rounded-lg border bg-muted/30"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  const dealId = e.dataTransfer.getData("dealId");
-                  if (!dealId) return;
-                  const deal = deals.find((d) => d.id === dealId);
-                  if (deal) updateDealStage(deal, stage.value);
-                }}
-              >
-                <div className="sticky top-0 z-10 p-3 border-b bg-card/80 backdrop-blur">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{stage.label}</span>
-                    <Badge variant="secondary">{stage.deals.length}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                    <DollarSign className="h-3 w-3" />{stage.total.toLocaleString()}
-                  </p>
-                </div>
-                <div className="p-2 space-y-2">
-                  {stage.deals.length === 0 ? (
-                    <p className="text-xs text-muted-foreground text-center py-4">No deals</p>
-                  ) : (
-                    stage.deals.map((deal) => (
-                      <Card key={deal.id} className="bg-card shadow-sm" draggable onDragStart={(e) => e.dataTransfer.setData("dealId", deal.id as string)}>
-                        <CardContent className="p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <h4 className="font-medium text-sm truncate">{deal.title}</h4>
-                              <p className="text-xs text-muted-foreground">${Number(deal.value || 0).toLocaleString()}</p>
-                              {deal.companies?.name && <p className="text-xs text-muted-foreground mt-1">{deal.companies.name}</p>}
-                            </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => updateDealStage(deal, "qualification")}>
-                                  <MoveHorizontal className="mr-2 h-4 w-4" /> Move to Qualification
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateDealStage(deal, "proposal")}>
-                                  <MoveHorizontal className="mr-2 h-4 w-4" /> Move to Proposal
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateDealStage(deal, "negotiation")}>
-                                  <MoveHorizontal className="mr-2 h-4 w-4" /> Move to Negotiation
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateDealStage(deal, "closed_won")}>
-                                  <CheckCircle className="mr-2 h-4 w-4 text-success" /> Mark Won
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateDealStage(deal, "closed_lost")}>
-                                  <XCircle className="mr-2 h-4 w-4 text-destructive" /> Mark Lost
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => deleteDeal(deal.id)}>
-                                  <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => { setCommentsOpenDealId(deal.id as string); fetchDealMessages(deal.id as string); }}>
-                                  <MessageSquare className="mr-2 h-4 w-4" /> Comments
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <DealsKanban 
+          stages={dealsByStage}
+          employees={employees}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e, stage) => {
+            const dealId = e.dataTransfer.getData("dealId");
+            if (!dealId) return;
+            const deal = deals.find((d) => d.id === dealId);
+            if (deal) updateDealStage(deal, stage);
+          }}
+          onDragStart={(e, id) => e.dataTransfer.setData("dealId", id)}
+          onUpdateStage={updateDealStage}
+          onDelete={deleteDeal}
+          onComments={(id) => { setCommentsOpenDealId(id); fetchDealMessages(id); }}
+          onAssign={handleAssign}
+          onView={(deal) => { setSelectedDeal(deal); setDetailsOpen(true); }}
+        />
       )}
+
+      <DealDetailsSheet 
+        deal={selectedDeal}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+      />
 
       <Dialog open={!!commentsOpenDealId} onOpenChange={(open) => {
         setCommentsOpenDealId(open ? commentsOpenDealId : null);

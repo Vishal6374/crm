@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Search, Activity, User, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 
 const actionColors: Record<string, string> = {
   create: "bg-success/10 text-success",
@@ -14,7 +15,7 @@ const actionColors: Record<string, string> = {
 };
 
 export default function ActivityLogsPage() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<(Database["public"]["Tables"]["activity_logs"]["Row"] & { profiles?: { full_name: string | null; email: string | null } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -23,12 +24,25 @@ export default function ActivityLogsPage() {
   }, []);
 
   async function fetchLogs() {
-    const { data, error } = await supabase
+    const { data: logsData, error } = await supabase
       .from("activity_logs")
-      .select("*, profiles:user_id(full_name, email)")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
-    if (!error) setLogs(data || []);
+    
+    if (error) {
+      console.error("Error fetching logs:", error);
+      return;
+    }
+
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email");
+
+    const joinedLogs = logsData.map(log => ({
+      ...log,
+      profiles: profilesData?.find(p => p.id === log.user_id) || null
+    }));
+
+    setLogs(joinedLogs);
     setLoading(false);
   }
 

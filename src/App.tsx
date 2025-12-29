@@ -24,12 +24,15 @@ import DesignationsPage from "@/pages/DesignationsPage";
 import UserRolesPage from "@/pages/UserRolesPage";
 import ActivityLogsPage from "@/pages/ActivityLogsPage";
 import SettingsPage from "@/pages/SettingsPage";
+import ChatPage from "@/pages/ChatPage";
 import NotFound from "@/pages/NotFound";
+import { ThemeProvider } from "./components/theme-provider";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ThemeProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
@@ -40,6 +43,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="chat" element={<ChatPage />} />
               <Route path="leads" element={<LeadsPage />} />
               <Route path="contacts" element={<ContactsPage />} />
               <Route path="companies" element={<CompaniesPage />} />
@@ -61,7 +65,8 @@ const App = () => (
           </Routes>
         </AuthProvider>
       </BrowserRouter>
-    </TooltipProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

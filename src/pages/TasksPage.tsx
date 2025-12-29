@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,14 +57,23 @@ export default function TasksPage() {
     deal_id: "",
   });
 
-  useEffect(() => {
-    fetchTasks();
-    fetchProfiles();
-    fetchLeads();
-    fetchDeals();
+  const fetchTaskCollaborators = useCallback(async (taskIds: string[]) => {
+    const { data, error } = await supabase
+      .from("task_collaborators")
+      .select("task_id, user_id")
+      .in("task_id", taskIds);
+    if (error) return;
+    const map: Record<string, string[]> = {};
+    (data || []).forEach((row) => {
+      const t = (row as { task_id: string; user_id: string }).task_id;
+      const u = (row as { task_id: string; user_id: string }).user_id;
+      if (!map[t]) map[t] = [];
+      map[t].push(u);
+    });
+    setTaskCollaborators(map);
   }, []);
 
-  async function fetchTasks() {
+  const fetchTasks = useCallback(async () => {
     const { data, error } = await supabase
       .from("tasks")
       .select("*")
@@ -76,33 +85,40 @@ export default function TasksPage() {
     } else {
       setTaskCollaborators({});
     }
-  }
+  }, [fetchTaskCollaborators]);
 
-  async function fetchProfiles() {
+  const fetchProfiles = useCallback(async () => {
     const { data } = await supabase
       .from("profiles")
       .select("id, full_name, email")
       .order("full_name");
     if (data) setProfiles(data);
-  }
+  }, []);
 
-  async function fetchLeads() {
+  const fetchLeads = useCallback(async () => {
     const { data } = await supabase
       .from("leads")
       .select("id, title, company_name")
       .order("created_at", { ascending: false })
       .limit(100);
     if (data) setLeads(data);
-  }
+  }, []);
 
-  async function fetchDeals() {
+  const fetchDeals = useCallback(async () => {
     const { data } = await supabase
       .from("deals")
       .select("id, title, value")
       .order("created_at", { ascending: false })
       .limit(100);
     if (data) setDeals(data);
-  }
+  }, []);
+
+  useEffect(() => {
+    fetchTasks();
+    fetchProfiles();
+    fetchLeads();
+    fetchDeals();
+  }, [fetchTasks, fetchProfiles, fetchLeads, fetchDeals]);
 
   async function createTask(e: React.FormEvent) {
     e.preventDefault();
@@ -272,22 +288,6 @@ export default function TasksPage() {
     setCommentText("");
     setCommentMention("");
     fetchTaskMessages(taskId);
-  }
-
-  async function fetchTaskCollaborators(taskIds: string[]) {
-    const { data, error } = await supabase
-      .from("task_collaborators")
-      .select("task_id, user_id")
-      .in("task_id", taskIds);
-    if (error) return;
-    const map: Record<string, string[]> = {};
-    (data || []).forEach((row) => {
-      const t = (row as { task_id: string; user_id: string }).task_id;
-      const u = (row as { task_id: string; user_id: string }).user_id;
-      if (!map[t]) map[t] = [];
-      map[t].push(u);
-    });
-    setTaskCollaborators(map);
   }
 
   async function addCollaborator(taskId: string, userId: string) {

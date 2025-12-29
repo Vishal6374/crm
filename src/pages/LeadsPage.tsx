@@ -13,10 +13,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
+import { Tables } from "@/integrations/supabase/types";
+
 export default function LeadsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [leads, setLeads] = useState<any[]>([]);
+  const [leads, setLeads] = useState<Tables<'leads'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
   
@@ -31,8 +33,8 @@ export default function LeadsPage() {
   
   // Dialogs
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingLead, setEditingLead] = useState<any>(null);
-  const [selectedLeadForDetails, setSelectedLeadForDetails] = useState<any>(null);
+  const [editingLead, setEditingLead] = useState<Tables<'leads'> | null>(null);
+  const [selectedLeadForDetails, setSelectedLeadForDetails] = useState<Tables<'leads'> | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isBulkActionOpen, setIsBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<"delete" | "status" | null>(null);
@@ -96,12 +98,12 @@ export default function LeadsPage() {
     setIsFormOpen(true);
   };
 
-  const handleEdit = (lead: any) => {
+  const handleEdit = (lead: Tables<'leads'>) => {
     setEditingLead(lead);
     setIsFormOpen(true);
   };
 
-  const handleView = (lead: any) => {
+  const handleView = (lead: Tables<'leads'>) => {
     setSelectedLeadForDetails(lead);
     setIsDetailsOpen(true);
   };
@@ -125,7 +127,40 @@ export default function LeadsPage() {
     }
   };
 
-  const handleConvert = async (lead: any) => {
+  const handleAssign = async (leadId: string, userId: string) => {
+    const { error } = await supabase.from("leads").update({ assigned_to: userId }).eq("id", leadId);
+    
+    if (error) {
+      toast({ title: "Error assigning lead", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Lead assigned successfully" });
+      
+      if (userId !== user?.id) {
+         sendDirectMessage(user?.id || "", userId, `You have been assigned to lead #${leadId}`);
+      }
+
+      await supabase.from("activity_logs").insert([{
+        action: "assigned_lead",
+        entity_type: "lead",
+        entity_id: leadId,
+        description: `Lead assigned to user ${userId}`,
+        user_id: user?.id
+      }]);
+      
+      fetchLeads();
+    }
+  };
+
+  const updateLeadStage = async (leadId: string, status: string) => {
+    const { error } = await supabase.from("leads").update({ status }).eq("id", leadId);
+    if (error) {
+      toast({ title: "Error updating status", description: error.message, variant: "destructive" });
+    } else {
+      fetchLeads();
+    }
+  };
+
+  const handleConvert = async (lead: Tables<'leads'>) => {
     // 1. Create Contact
     const { data: contact, error: contactError } = await supabase.from("contacts").insert([{
       first_name: lead.contact_name ? lead.contact_name.split(' ')[0] : (lead.title || "Unknown"),
@@ -224,24 +259,14 @@ export default function LeadsPage() {
           <Button variant="outline" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" /> Export
           </Button>
-          <div className="border rounded-md flex">
-            <Button 
-              variant={viewMode === "table" ? "secondary" : "ghost"} 
-              size="icon" 
-              onClick={() => setViewMode("table")}
-              className="rounded-none rounded-l-md"
-            >
-              <LayoutList className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant={viewMode === "kanban" ? "secondary" : "ghost"} 
-              size="icon" 
-              onClick={() => setViewMode("kanban")}
-              className="rounded-none rounded-r-md"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button 
+            variant="outline"
+            size="icon" 
+            onClick={() => setViewMode(viewMode === "table" ? "kanban" : "table")}
+            title="Toggle View"
+          >
+            {viewMode === "table" ? <LayoutGrid className="h-4 w-4" /> : <LayoutList className="h-4 w-4" />}
+          </Button>
           <Button onClick={handleCreate}>
             <Plus className="mr-2 h-4 w-4" /> New Lead
           </Button>
@@ -283,10 +308,10 @@ export default function LeadsPage() {
         initialData={editingLead} 
       />
 
-      <LeadDetailsSheet
-        lead={selectedLeadForDetails}
-        open={isDetailsOpen}
-        onOpenChange={setIsDetailsOpen}
+      <LeadDetailsSheet 
+        lead={selectedLeadForDetails} 
+        open={isDetailsOpen} 
+        onOpenChange={setIsDetailsOpen} 
       />
 
       <Dialog open={isBulkActionOpen} onOpenChange={setIsBulkActionOpen}>

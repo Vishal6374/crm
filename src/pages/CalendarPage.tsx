@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
+import type { Database } from "@/integrations/supabase/types";
 
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -17,30 +18,53 @@ const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function CalendarPage() {
   const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Database["public"]["Tables"]["tasks"]["Row"][]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<(Database["public"]["Tables"]["leave_requests"]["Row"] & { employees?: { profiles?: { full_name: string | null } } })[]>([]);
   const [dayDialogOpen, setDayDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [newTask, setNewTask] = useState({ title: "", description: "", priority: "medium" });
   const [rescheduleTaskId, setRescheduleTaskId] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
 
-  useEffect(() => {
-    fetchData();
-  }, [currentDate]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
 
     const [tasksRes, leaveRes] = await Promise.all([
       supabase.from("tasks").select("*").gte("due_date", startOfMonth.toISOString()).lte("due_date", endOfMonth.toISOString()),
-      supabase.from("leave_requests").select("*, employees(profiles:user_id(full_name))").gte("start_date", startOfMonth.toISOString().split("T")[0]).lte("end_date", endOfMonth.toISOString().split("T")[0]),
+      supabase.from("leave_requests").select("*").gte("start_date", startOfMonth.toISOString().split("T")[0]).lte("end_date", endOfMonth.toISOString().split("T")[0]),
     ]);
 
     if (tasksRes.data) setTasks(tasksRes.data);
-    if (leaveRes.data) setLeaveRequests(leaveRes.data);
-  }
+    
+    if (leaveRes.data) {
+      // Manual join to avoid foreign key relationship errors
+      const [empRes, profRes] = await Promise.all([
+        supabase.from("employees").select("id, user_id"),
+        supabase.from("profiles").select("id, full_name")
+      ]);
+
+      const joinedLeaves = leaveRes.data.map(leave => {
+        const employee = empRes.data?.find(e => e.id === leave.employee_id);
+        const profile = employee ? profRes.data?.find(p => p.id === employee.user_id) : null;
+        
+        return {
+          ...leave,
+          employees: {
+            profiles: {
+              full_name: profile?.full_name || null
+            }
+          }
+        };
+      });
+      
+      setLeaveRequests(joinedLeaves);
+    }
+  }, [currentDate]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
@@ -96,7 +120,7 @@ export default function CalendarPage() {
       priority: newTask.priority as "low" | "medium" | "high" | "urgent",
       status: "todo",
       due_date: selectedDate,
-      created_by: user?.id,
+      created_by: user?.id || null,
     }]);
     if (!error) {
       setNewTask({ title: "", description: "", priority: "medium" });
@@ -203,10 +227,10 @@ export default function CalendarPage() {
           <DialogHeader>
             <DialogTitle>Manage {selectedDate}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
             <div>
               <h3 className="font-medium text-sm">Tasks</h3>
-              <div className="space-y-2 max-h-[200px] overflow-auto mt-2">
+              <div className="space-y-2 mt-2">
                 {tasks.filter((t) => t.due_date?.startsWith(selectedDate)).map((task) => (
                   <div key={task.id} className="flex items-center gap-2">
                     <span className="text-sm flex-1 truncate">{task.title}</span>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Globe, Mail, MapPin, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Globe, Mail, MapPin, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -10,15 +10,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CompanyDetailsSheet } from "@/components/companies/CompanyDetailsSheet";
+import type { Database } from "@/integrations/supabase/types";
 
 export default function CompaniesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [companies, setCompanies] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<Database["public"]["Tables"]["companies"]["Row"][]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingCompany, setEditingCompany] = useState<any>(null);
+  const [editingCompany, setEditingCompany] = useState<Database["public"]["Tables"]["companies"]["Row"] | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<Database["public"]["Tables"]["companies"]["Row"] | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -76,7 +80,7 @@ export default function CompaniesPage() {
     c.industry?.toLowerCase().includes(search.toLowerCase())
   );
 
-  function openEdit(company: any) {
+  function openEdit(company: Database["public"]["Tables"]["companies"]["Row"]) {
     setEditingCompany(company);
     setFormData({
       name: company.name || "",
@@ -184,6 +188,9 @@ export default function CompaniesPage() {
                       <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => { setSelectedCompany(company); setDetailsOpen(true); }}>
+                        <Eye className="mr-2 h-4 w-4" /> View Details
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(company)}>
                         <Pencil className="mr-2 h-4 w-4" /> Edit
                       </DropdownMenuItem>
@@ -198,6 +205,12 @@ export default function CompaniesPage() {
           ))
         )}
       </div>
+
+      <CompanyDetailsSheet 
+        company={selectedCompany}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+      />
     </div>
   );
 }

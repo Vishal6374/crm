@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,27 +7,29 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/components/theme-provider";
 import { User, Lock, Bell, Palette } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [profile, setProfile] = useState({ full_name: "", avatar_url: "" });
+  const { theme, setTheme } = useTheme();
+  const [profile, setProfile] = useState<{ full_name: string; avatar_url: string }>({ full_name: "", avatar_url: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [passwordData, setPasswordData] = useState({ current: "", new: "", confirm: "" });
 
-  useEffect(() => {
-    fetchProfile();
-  }, [user]);
-
-  async function fetchProfile() {
+  const fetchProfile = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", user.id).single();
     if (data) setProfile({ full_name: data.full_name || "", avatar_url: data.avatar_url || "" });
     setLoading(false);
-  }
+  }, [user]);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [user, fetchProfile]);
 
   async function updateProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -166,7 +168,7 @@ export default function SettingsPage() {
               <p className="font-medium">Dark Mode</p>
               <p className="text-sm text-muted-foreground">Use dark theme</p>
             </div>
-            <Switch />
+            <Switch checked={theme === "dark"} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
           </div>
           <Separator />
           <div className="flex items-center justify-between">

@@ -9,6 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+import { Tables } from "@/integrations/supabase/types";
+
+interface UserRoleWithProfile extends Tables<'user_roles'> {
+  profiles: { full_name: string | null; email: string | null } | null;
+}
+
 const roleColors: Record<string, string> = {
   admin: "bg-destructive/10 text-destructive",
   manager: "bg-warning/10 text-warning",
@@ -23,8 +29,8 @@ const roleDescriptions: Record<string, string> = {
 
 export default function UserRolesPage() {
   const { toast } = useToast();
-  const [userRoles, setUserRoles] = useState<any[]>([]);
-  const [profiles, setProfiles] = useState<any[]>([]);
+  const [userRoles, setUserRoles] = useState<UserRoleWithProfile[]>([]);
+  const [profiles, setProfiles] = useState<Pick<Tables<'profiles'>, "id" | "full_name" | "email">[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState({ user_id: "", role: "employee" });
@@ -35,11 +41,24 @@ export default function UserRolesPage() {
   }, []);
 
   async function fetchUserRoles() {
-    const { data, error } = await supabase
+    const { data: rolesData, error } = await supabase
       .from("user_roles")
-      .select("*, profiles:user_id(full_name, email)")
+      .select("*")
       .order("created_at", { ascending: false });
-    if (!error) setUserRoles(data || []);
+    
+    if (error) {
+      console.error("Error fetching user roles:", error);
+      return;
+    }
+
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email");
+
+    const joinedRoles = rolesData.map(role => ({
+      ...role,
+      profiles: profilesData?.find(p => p.id === role.user_id) || null
+    }));
+
+    setUserRoles(joinedRoles);
     setLoading(false);
   }
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -11,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect } from "react";
+import { Tables } from "@/integrations/supabase/types";
 
 const leadSchema = z.object({
   company_name: z.string().min(1, "Company name is required"),
@@ -29,7 +31,7 @@ interface LeadFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-  initialData?: any; // Replace with proper Lead type if available
+  initialData?: Tables<'leads'>; 
 }
 
 export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFormProps) {
@@ -89,7 +91,7 @@ export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFor
         notes: data.notes || null,
         description: data.notes || null, // Sync description with notes
         value: data.value ? parseFloat(data.value) : 0,
-        created_by: user?.id,
+        created_by: user?.id || null,
       };
 
       if (initialData?.id) {
@@ -97,7 +99,7 @@ export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFor
           .from("leads")
           .update(payload)
           .eq("id", initialData.id);
-        
+
         if (error) throw error;
 
         await supabase.from("activity_logs").insert([{
@@ -115,13 +117,13 @@ export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFor
           .insert([payload])
           .select()
           .single();
-        
+
         if (error) throw error;
 
         await supabase.from("activity_logs").insert([{
           action: "created_lead",
           entity_type: "lead",
-          entity_id: newLead.id,
+          entity_id: newLead!.id,
           description: `Created lead: ${data.company_name}`,
           user_id: user?.id,
         }]);
@@ -131,8 +133,8 @@ export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFor
       
       onSuccess();
       onOpenChange(false);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
     }
   }
 

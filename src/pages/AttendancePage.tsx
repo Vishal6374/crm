@@ -43,22 +43,57 @@ export default function AttendancePage() {
   }, []);
 
   async function fetchAttendance() {
-    const { data, error } = await supabase
+    const { data: attendanceData, error } = await supabase
       .from("attendance")
-      .select("*, employees(employee_id, profiles:user_id(full_name))")
+      .select("*")
       .order("date", { ascending: false })
       .limit(100);
-    if (!error) setAttendance(data || []);
+    
+    if (error) {
+      console.error("Error fetching attendance:", error);
+      return;
+    }
+
+    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+
+    const joinedAttendance = attendanceData.map(att => {
+      const emp = empsData?.find(e => e.id === att.employee_id);
+      const prof = profilesData?.find(p => p.id === emp?.user_id);
+      return {
+        ...att,
+        employees: emp ? {
+          employee_id: emp.employee_id,
+          profiles: prof ? { full_name: prof.full_name } : null
+        } : undefined
+      };
+    });
+
+    setAttendance(joinedAttendance);
     setLoading(false);
   }
 
   async function fetchEmployees() {
-    const { data } = await supabase
+    const { data: empsData } = await supabase
       .from("employees")
-      .select("id, employee_id, profiles:user_id(full_name)")
+      .select("id, employee_id, user_id")
       .eq("status", "active")
       .order("employee_id");
-    if (data) setEmployees(data);
+    
+    if (!empsData) return;
+
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+
+    const joinedEmployees = empsData.map(emp => {
+      const prof = profilesData?.find(p => p.id === emp.user_id);
+      return {
+        id: emp.id,
+        employee_id: emp.employee_id,
+        profiles: prof ? { full_name: prof.full_name } : null
+      };
+    });
+
+    setEmployees(joinedEmployees);
   }
 
   async function createAttendance(e: React.FormEvent) {

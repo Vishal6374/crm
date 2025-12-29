@@ -10,10 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
+import { Tables } from "@/integrations/supabase/types";
+
 export default function DesignationsPage() {
   const { toast } = useToast();
-  const [designations, setDesignations] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
+  const [designations, setDesignations] = useState<(Tables<'designations'> & { departments: Pick<Tables<'departments'>, 'name'> | null })[]>([]);
+  const [departments, setDepartments] = useState<Pick<Tables<'departments'>, 'id' | 'name'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);

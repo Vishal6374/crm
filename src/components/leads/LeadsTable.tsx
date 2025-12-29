@@ -3,7 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Pencil, Trash2, UserCheck, Eye } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
+import { User } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   new: "bg-info/10 text-info",
@@ -16,17 +17,19 @@ const statusColors: Record<string, string> = {
 };
 
 interface LeadsTableProps {
-  leads: any[];
+  leads: Tables<'leads'>[];
   selectedLeads: Set<string>;
+  employees?: Tables<'profiles'>[];
   onSelectLead: (id: string, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
-  onEdit: (lead: any) => void;
+  onEdit: (lead: Tables<'leads'>) => void;
   onDelete: (id: string) => void;
-  onConvert: (lead: any) => void;
-  onView: (lead: any) => void;
+  onConvert: (lead: Tables<'leads'>) => void;
+  onView: (lead: Tables<'leads'>) => void;
+  onAssign?: (leadId: string, userId: string) => void;
 }
 
-export function LeadsTable({ leads, selectedLeads, onSelectLead, onSelectAll, onEdit, onDelete, onConvert, onView }: LeadsTableProps) {
+export function LeadsTable({ leads, selectedLeads, employees = [], onSelectLead, onSelectAll, onEdit, onDelete, onConvert, onView, onAssign }: LeadsTableProps) {
   const allSelected = leads.length > 0 && selectedLeads.size === leads.length;
 
   return (
@@ -92,6 +95,20 @@ export function LeadsTable({ leads, selectedLeads, onSelectLead, onSelectAll, on
                       <DropdownMenuItem onClick={() => onView(lead)}>
                         <Eye className="mr-2 h-4 w-4" /> View Details
                       </DropdownMenuItem>
+                      {onAssign && (
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger>
+                            <User className="mr-2 h-4 w-4" /> Assign
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            {employees.map((emp) => (
+                              <DropdownMenuItem key={emp.id} onClick={() => onAssign(lead.id, emp.id)}>
+                                {emp.full_name}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                      )}
                       <DropdownMenuItem onClick={() => onEdit(lead)}>
                         <Pencil className="mr-2 h-4 w-4" /> Edit
                       </DropdownMenuItem>
