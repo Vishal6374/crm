@@ -1,0 +1,136 @@
+import { Bell, Search, User, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+export function AppHeader() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState<Array<{ id: string; title: string | null; body: string | null; read: boolean; created_at: string }>>([]);
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const userInitials = user?.email?.slice(0, 2).toUpperCase() || "U";
+
+  async function fetchNotifications() {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from("notifications")
+      .select("id, title, body, read, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setNotifications(data || []);
+  }
+
+  async function markAllRead() {
+    if (!user?.id) return;
+    await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+    fetchNotifications();
+  }
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel("notifications_changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        () => fetchNotifications()
+      )
+      .subscribe();
+    fetchNotifications();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
+  return (
+    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6">
+      {/* Search */}
+      <div className="flex items-center gap-4 flex-1 max-w-md">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search..."
+            className="pl-9 bg-muted/50 border-0 focus-visible:ring-1"
+          />
+        </div>
+      </div>
+
+      {/* Right side */}
+      <div className="flex items-center gap-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell className="h-5 w-5 text-muted-foreground" />
+              {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80">
+            <div className="flex items-center justify-between px-2 py-1">
+              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              <Button variant="ghost" size="sm" onClick={markAllRead} className="gap-1">
+                <Check className="h-4 w-4" />Mark all read
+              </Button>
+            </div>
+            <DropdownMenuSeparator />
+            {notifications.length === 0 ? (
+              <div className="px-2 py-4 text-sm text-muted-foreground">No notifications</div>
+            ) : (
+              notifications.map((n) => (
+                <DropdownMenuItem key={n.id} className="flex flex-col items-start">
+                  <div className="flex items-center justify-between w-full">
+                    <span className="font-medium text-sm">{n.title || "Notification"}</span>
+                    {!n.read && <span className="h-2 w-2 rounded-full bg-destructive" />}
+                  </div>
+                  {n.body && <span className="text-xs text-muted-foreground">{n.body}</span>}
+                  <span className="text-[10px] text-muted-foreground mt-1">{new Date(n.created_at).toLocaleString()}</span>
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* User Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="gap-2 pl-2 pr-3">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                  {userInitials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium hidden sm:inline-block">
+                {user?.email?.split("@")[0]}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>My Account</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate("/settings")}>
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={signOut} className="text-destructive">
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  );
+}
