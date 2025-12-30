@@ -39,10 +39,9 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
 
   const fetchChannels = useCallback(async () => {
     if (!user) return;
-    // Fetch channels where current user is a participant
     const { data: participantData, error: participantError } = await supabase
       .from('chat_participants')
-      .select('channel_id')
+      .select('*')
       .eq('user_id', user.id);
 
     if (participantError) {
@@ -51,40 +50,57 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
       return;
     }
 
-    const channelIds = participantData?.map(p => p.channel_id) || [];
+    const participantRowsTyped = (participantData ?? []) as Tables<'chat_participants'>[];
+    const channelIds = participantRowsTyped.map((p) => p.channel_id);
 
     if (channelIds.length === 0) {
       setChannels([]);
       return;
     }
 
-    const { data, error } = await supabase
+    const { data: channelRows, error } = await supabase
       .from('chat_channels')
-      .select(`
-        *,
-        chat_participants(user_id)
-      `)
+      .select('*')
       .in('id', channelIds)
       .order('updated_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching channels:', error);
       toast({ title: "Error fetching channels", description: error.message, variant: "destructive" });
-    } else if (data) {
-      // For DMs, we need to fetch the other user's info to display name
-      const enrichedChannels: ChannelWithParticipants[] = await Promise.all(data.map(async (channel) => {
-        if (channel.type === 'direct') {
-          const otherParticipant = channel.chat_participants?.find((p: ChannelParticipant) => p.user_id !== user.id);
-          if (otherParticipant) {
-             const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', otherParticipant.user_id).single();
-             return { ...channel, name: profile?.full_name || profile?.email || 'Unknown User', otherUserId: otherParticipant.user_id };
-          } else {
-             // Chat with self or broken data
-             return { ...channel, name: 'Me', otherUserId: user.id };
+    } else if (channelRows && channelRows.length) {
+      const channelRowsTyped = channelRows as Tables<'chat_channels'>[];
+      const { data: participantRows } = await supabase
+        .from('chat_participants')
+        .select('channel_id, user_id')
+        .in('channel_id', channelIds);
+
+      const byChannel = new Map<string, ChannelParticipant[]>();
+      ((participantRows ?? []) as Pick<Tables<'chat_participants'>, 'channel_id' | 'user_id'>[]).forEach((p) => {
+        const arr = byChannel.get(p.channel_id) || [];
+        arr.push({ user_id: p.user_id });
+        byChannel.set(p.channel_id, arr);
+      });
+
+      const enrichedChannels: ChannelWithParticipants[] = await Promise.all(
+        channelRowsTyped.map(async (channel) => {
+          const participants = byChannel.get(channel.id) || [];
+          if (channel.type === 'direct') {
+            const otherParticipant = participants.find((p) => p.user_id !== user.id);
+            if (otherParticipant) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', otherParticipant.user_id)
+                .maybeSingle();
+              const profileData = profile as { full_name: string | null; email: string | null } | null;
+              const displayName = profileData?.full_name || profileData?.email || 'Unknown User';
+              return { ...channel, chat_participants: participants, name: displayName, otherUserId: otherParticipant.user_id };
+            }
+            return { ...channel, chat_participants: participants, name: 'Me', otherUserId: user.id };
           }
-        }
-        return channel;
-      }));
+          return { ...channel, chat_participants: participants };
+        }),
+      );
       setChannels(enrichedChannels);
     }
   }, [user, toast]);
@@ -122,23 +138,23 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
 
     const { data, error } = await supabase
       .from('chat_channels')
-      .insert({ type: 'group', name: newChannelName, created_by: user.id } as Database['public']['Tables']['chat_channels']['Insert'])
+      .insert({ type: 'group', name: newChannelName, created_by: user.id } satisfies TablesInsert<'chat_channels'>)
       .select()
       .single();
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else if (data) {
+      const inserted = data as Tables<'chat_channels'>;
       setIsDialogOpen(false);
       setNewChannelName("");
       fetchChannels();
-      onSelectChannel(data.id);
+      onSelectChannel(inserted.id);
     }
   }
 
   async function startDM(otherUserId: string) {
     if (!user) return;
-    // Check if DM already exists
     const existingChannel = channels.find(c => c.type === 'direct' && c.otherUserId === otherUserId);
     if (existingChannel) {
       onSelectChannel(existingChannel.id);
@@ -146,10 +162,9 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
       return;
     }
 
-    // Create new DM
     const { data, error } = await supabase
       .from('chat_channels')
-      .insert({ type: 'direct', created_by: user.id } as Database['public']['Tables']['chat_channels']['Insert'])
+      .insert({ type: 'direct', created_by: user.id } satisfies TablesInsert<'chat_channels'>)
       .select()
       .single();
 
@@ -159,14 +174,14 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
     }
 
     if (data) {
-      // Add participants (Creator is added by trigger, need to add the other user)
-      await supabase.from('chat_participants').insert([
-        { channel_id: data.id, user_id: otherUserId }
-      ]);
+      const inserted = data as Tables<'chat_channels'>;
+      await supabase
+        .from('chat_participants')
+        .insert([{ channel_id: inserted.id, user_id: otherUserId }] satisfies TablesInsert<'chat_participants'>[]);
 
       setIsDialogOpen(false);
       fetchChannels();
-      onSelectChannel(data.id);
+      onSelectChannel(inserted.id);
     }
   }
 
