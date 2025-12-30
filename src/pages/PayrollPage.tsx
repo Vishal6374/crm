@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, DollarSign, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, IndianRupee, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -11,7 +11,40 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Database } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
+
+type EmployeeSummary = {
+  id: string;
+  employee_id: string;
+  salary: number | null;
+  profiles?: { full_name: string | null } | null;
+};
+
+type EmployeeRow = {
+  id: string;
+  employee_id: string;
+  user_id: string;
+  salary: number | null;
+};
+
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+};
+
+type PayrollRow = {
+  id: string;
+  employee_id: string;
+  month: number;
+  year: number;
+  basic_salary: number | null;
+  allowances: number | null;
+  deductions: number | null;
+  net_salary: number | null;
+  status: "pending" | "processed" | "paid";
+  paid_at?: string | null;
+  created_at: string;
+};
 
 const statusColors: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
@@ -23,12 +56,13 @@ const months = ["January", "February", "March", "April", "May", "June", "July", 
 
 export default function PayrollPage() {
   const { toast } = useToast();
-  const [payroll, setPayroll] = useState<(Database["public"]["Tables"]["payroll"]["Row"] & { employees?: { employee_id: string; salary: number | null; profiles?: { full_name: string | null } } })[]>([]);
-  const [employees, setEmployees] = useState<{ id: string; employee_id: string; salary: number | null; profiles?: { full_name: string | null } }[]>([]);
+  const { can } = usePermissions();
+  const [payroll, setPayroll] = useState<(PayrollRow & { employees?: EmployeeSummary })[]>([]);
+  const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Database["public"]["Tables"]["payroll"]["Row"] | null>(null);
+  const [editing, setEditing] = useState<PayrollRow | null>(null);
   const [genDialogOpen, setGenDialogOpen] = useState(false);
   const [genMonth, setGenMonth] = useState((new Date().getMonth() + 1).toString());
   const [genYear, setGenYear] = useState(new Date().getFullYear().toString());
@@ -64,17 +98,19 @@ export default function PayrollPage() {
     const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id, salary");
     const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
 
-    const joinedPayroll = payrollData.map(pay => {
-      const emp = empsData?.find(e => e.id === pay.employee_id);
-      const prof = profilesData?.find(p => p.id === emp?.user_id);
-      return {
-        ...pay,
-        employees: emp ? {
-          employee_id: emp.employee_id,
-          salary: emp.salary,
-          profiles: prof ? { full_name: prof.full_name } : null
-        } : undefined
-      };
+    const joinedPayroll = (payrollData || []).map((pay) => {
+      const payRow = pay as unknown as PayrollRow;
+      const emp = (empsData || []).find((e) => (e as EmployeeRow).id === payRow.employee_id) as EmployeeRow | undefined;
+      const prof = (profilesData || []).find((p) => (p as ProfileRow).id === emp?.user_id) as ProfileRow | undefined;
+      const employees: EmployeeSummary | undefined = emp
+        ? {
+            id: emp.id,
+            employee_id: emp.employee_id,
+            salary: emp.salary,
+            profiles: prof ? { full_name: prof.full_name } : null,
+          }
+        : undefined;
+      return { ...(payRow as PayrollRow), employees };
     });
 
     setPayroll(joinedPayroll);
@@ -92,13 +128,14 @@ export default function PayrollPage() {
 
     const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
 
-    const joinedEmployees = empsData.map(emp => {
-      const prof = profilesData?.find(p => p.id === emp.user_id);
+    const joinedEmployees = (empsData || []).map((emp) => {
+      const empRow = emp as EmployeeRow;
+      const prof = (profilesData || []).find((p) => (p as ProfileRow).id === empRow.user_id) as ProfileRow | undefined;
       return {
-        id: emp.id,
-        employee_id: emp.employee_id,
-        salary: emp.salary,
-        profiles: prof ? { full_name: prof.full_name } : null
+        id: empRow.id,
+        employee_id: empRow.employee_id,
+        salary: empRow.salary ?? null,
+        profiles: prof ? { full_name: prof.full_name } : null,
       };
     });
 
@@ -208,9 +245,11 @@ export default function PayrollPage() {
           </div>
         <div className="flex items-center gap-2">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button><Plus className="mr-2 h-4 w-4" />Create Payroll</Button>
-            </DialogTrigger>
+            {can("payroll", "can_create") && (
+              <DialogTrigger asChild>
+                <Button><Plus className="mr-2 h-4 w-4" />Create Payroll</Button>
+              </DialogTrigger>
+            )}
           <DialogContent>
             <DialogHeader><DialogTitle>Create Payroll Record</DialogTitle></DialogHeader>
             <form onSubmit={createPayroll} className="space-y-4">
@@ -252,9 +291,11 @@ export default function PayrollPage() {
             </DialogContent>
           </Dialog>
           <Dialog open={genDialogOpen} onOpenChange={setGenDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline"><DollarSign className="mr-2 h-4 w-4" />Generate Monthly</Button>
-            </DialogTrigger>
+            {can("payroll", "can_edit") && (
+              <DialogTrigger asChild>
+                <Button variant="outline"><IndianRupee className="mr-2 h-4 w-4" />Generate Monthly</Button>
+              </DialogTrigger>
+            )}
             <DialogContent>
               <DialogHeader><DialogTitle>Generate Monthly Payroll</DialogTitle></DialogHeader>
               <div className="space-y-4">
@@ -324,7 +365,9 @@ export default function PayrollPage() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" onClick={bulkMarkPaid} disabled={selected.size === 0}>Mark Selected Paid</Button>
+          {can("payroll", "can_edit") && (
+            <Button variant="outline" onClick={bulkMarkPaid} disabled={selected.size === 0}>Mark Selected Paid</Button>
+          )}
         </div>
       </div>
 
@@ -332,16 +375,16 @@ export default function PayrollPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-warning/10"><DollarSign className="h-5 w-5 text-warning" /></div>
-              <div><p className="text-sm text-muted-foreground">Pending Payments</p><p className="text-2xl font-bold">${totalPending.toLocaleString()}</p></div>
+              <div className="p-2 rounded-lg bg-warning/10"><IndianRupee className="h-5 w-5 text-warning" /></div>
+              <div><p className="text-sm text-muted-foreground">Pending Payments</p><p className="text-2xl font-bold">₹{totalPending.toLocaleString()}</p></div>
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-success/10"><DollarSign className="h-5 w-5 text-success" /></div>
-              <div><p className="text-sm text-muted-foreground">Total Paid (This Year)</p><p className="text-2xl font-bold">${totalPaid.toLocaleString()}</p></div>
+              <div className="p-2 rounded-lg bg-success/10"><IndianRupee className="h-5 w-5 text-success" /></div>
+              <div><p className="text-sm text-muted-foreground">Total Paid (This Year)</p><p className="text-2xl font-bold">₹{totalPaid.toLocaleString()}</p></div>
             </div>
           </CardContent>
         </Card>
@@ -382,10 +425,10 @@ export default function PayrollPage() {
                     </td>
                     <td className="font-medium">{p.employees?.profiles?.full_name || p.employees?.employee_id}</td>
                     <td>{months[p.month - 1]} {p.year}</td>
-                    <td>${Number(p.basic_salary || 0).toLocaleString()}</td>
-                    <td className="text-success">${Number(p.allowances || 0).toLocaleString()}</td>
-                    <td className="text-destructive">${Number(p.deductions || 0).toLocaleString()}</td>
-                    <td className="font-semibold">${Number(p.net_salary || 0).toLocaleString()}</td>
+                    <td>₹{Number(p.basic_salary || 0).toLocaleString()}</td>
+                    <td className="text-success">₹{Number(p.allowances || 0).toLocaleString()}</td>
+                    <td className="text-destructive">₹{Number(p.deductions || 0).toLocaleString()}</td>
+                    <td className="font-semibold">₹{Number(p.net_salary || 0).toLocaleString()}</td>
                     <td><Badge className={statusColors[p.status]}>{p.status}</Badge></td>
                     <td className="text-right">
                       <DropdownMenu>
@@ -393,13 +436,13 @@ export default function PayrollPage() {
                           <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {p.status === "pending" && (
+                          {p.status === "pending" && can("payroll", "can_edit") && (
                             <DropdownMenuItem onClick={() => updatePayrollStatus(p.id, "processed")}>Process</DropdownMenuItem>
                           )}
-                          {p.status === "processed" && (
+                          {p.status === "processed" && can("payroll", "can_edit") && (
                             <DropdownMenuItem onClick={() => updatePayrollStatus(p.id, "paid")}>Mark Paid</DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={() => {
+                          {can("payroll", "can_edit") && (<DropdownMenuItem onClick={() => {
                             setEditing(p);
                             setFormData({
                               employee_id: p.employee_id,
@@ -413,8 +456,8 @@ export default function PayrollPage() {
                             setDialogOpen(true);
                           }}>
                             <Pencil className="mr-2 h-4 w-4" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={async () => {
+                          </DropdownMenuItem>)}
+                          {can("payroll", "can_edit") && (<DropdownMenuItem onClick={async () => {
                             if (!confirm("Delete this payroll record?")) return;
                             const { error } = await supabase.from("payroll").delete().eq("id", p.id);
                             if (error) {
@@ -425,7 +468,7 @@ export default function PayrollPage() {
                             fetchPayroll();
                           }}>
                             <Trash2 className="mr-2 h-4 w-4" /> Delete
-                          </DropdownMenuItem>
+                          </DropdownMenuItem>)}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>

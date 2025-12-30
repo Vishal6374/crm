@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Database } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const statusColors: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
@@ -31,6 +32,7 @@ const leaveTypeLabels: Record<string, string> = {
 export default function LeaveRequestsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [leaveRequests, setLeaveRequests] = useState<(Database["public"]["Tables"]["leave_requests"]["Row"] & { employees?: { employee_id: string; profiles?: { full_name: string | null } } })[]>([]);
   const [employees, setEmployees] = useState<{ id: string; employee_id: string; profiles?: { full_name: string | null } }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -196,9 +198,11 @@ export default function LeaveRequestsPage() {
           <p className="page-description">Manage time-off requests</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />Request Leave</Button>
-          </DialogTrigger>
+          {can("leave_requests", "can_create") && (
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" />Request Leave</Button>
+            </DialogTrigger>
+          )}
           <DialogContent>
             <DialogHeader><DialogTitle>Submit Leave Request</DialogTitle></DialogHeader>
             <form onSubmit={createLeaveRequest} className="space-y-4">
@@ -284,12 +288,13 @@ export default function LeaveRequestsPage() {
                           <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {r.status === "pending" && (
+                          {r.status === "pending" && can("leave_requests", "can_approve") && (
                             <>
                               <DropdownMenuItem onClick={() => updateLeaveStatus(r.id, "approved")}>Approve</DropdownMenuItem>
                               <DropdownMenuItem onClick={() => updateLeaveStatus(r.id, "rejected")}>Reject</DropdownMenuItem>
                             </>
                           )}
+                          {can("leave_requests", "can_edit") && (
                           <DropdownMenuItem onClick={async () => {
                             if (!confirm("Delete this leave request?")) return;
                             const { error } = await supabase.from("leave_requests").delete().eq("id", r.id);
@@ -300,6 +305,7 @@ export default function LeaveRequestsPage() {
                           }}>
                             <Trash2 className="mr-2 h-4 w-4" /> Delete
                           </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>

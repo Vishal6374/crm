@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface ChatWindowProps {
   channelId: string;
@@ -37,6 +38,7 @@ type ParticipantWithProfile = {
 export function ChatWindow({ channelId }: ChatWindowProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [messages, setMessages] = useState<MessageWithProfile[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [channel, setChannel] = useState<ChannelWithName | null>(null);
@@ -239,7 +241,7 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-           {channel.type === 'group' && (
+           {channel.type === 'group' && can("chat", "can_edit") && (
              <Button variant="ghost" size="icon" onClick={() => setIsAddMemberOpen(true)} title="Add Member">
                <UserPlus className="h-4 w-4" />
              </Button>

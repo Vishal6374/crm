@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Pencil, Trash2, UserCheck, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { User } from "lucide-react";
+import { Tables } from "@/integrations/supabase/types";
 
 const statusColors: Record<string, string> = {
   new: "bg-info/10 text-info",
@@ -22,10 +23,10 @@ interface LeadsTableProps {
   employees?: Tables<'profiles'>[];
   onSelectLead: (id: string, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
-  onEdit: (lead: Tables<'leads'>) => void;
-  onDelete: (id: string) => void;
-  onConvert: (lead: Tables<'leads'>) => void;
-  onView: (lead: Tables<'leads'>) => void;
+  onEdit?: (lead: Tables<'leads'>) => void;
+  onDelete?: (id: string) => void;
+  onConvert?: (lead: Tables<'leads'>) => void;
+  onView?: (lead: Tables<'leads'>) => void;
   onAssign?: (leadId: string, userId: string) => void;
 }
 
@@ -47,7 +48,7 @@ export function LeadsTable({ leads, selectedLeads, employees = [], onSelectLead,
             <TableHead>Contact</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Source</TableHead>
-            <TableHead>Value</TableHead>
+            <TableHead>Value (₹)</TableHead>
             <TableHead>Created</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -81,7 +82,7 @@ export function LeadsTable({ leads, selectedLeads, employees = [], onSelectLead,
                   </Badge>
                 </TableCell>
                 <TableCell>{lead.source || "-"}</TableCell>
-                <TableCell>${Number(lead.value || 0).toLocaleString()}</TableCell>
+                <TableCell>₹{Number(lead.value || 0).toLocaleString()}</TableCell>
                 <TableCell>{new Date(lead.created_at).toLocaleDateString()}</TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
@@ -92,9 +93,11 @@ export function LeadsTable({ leads, selectedLeads, employees = [], onSelectLead,
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onView(lead)}>
-                        <Eye className="mr-2 h-4 w-4" /> View Details
-                      </DropdownMenuItem>
+                      {onView && (
+                        <DropdownMenuItem onClick={() => onView(lead)}>
+                          <Eye className="mr-2 h-4 w-4" /> View Details
+                        </DropdownMenuItem>
+                      )}
                       {onAssign && (
                         <DropdownMenuSub>
                           <DropdownMenuSubTrigger>
@@ -109,15 +112,21 @@ export function LeadsTable({ leads, selectedLeads, employees = [], onSelectLead,
                           </DropdownMenuSubContent>
                         </DropdownMenuSub>
                       )}
-                      <DropdownMenuItem onClick={() => onEdit(lead)}>
-                        <Pencil className="mr-2 h-4 w-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onConvert(lead)}>
-                        <UserCheck className="mr-2 h-4 w-4" /> Convert to Contact
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" onClick={() => onDelete(lead.id)}>
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                      </DropdownMenuItem>
+                      {onEdit && (
+                        <DropdownMenuItem onClick={() => onEdit(lead)}>
+                          <Pencil className="mr-2 h-4 w-4" /> Edit
+                        </DropdownMenuItem>
+                      )}
+                      {onConvert && (
+                        <DropdownMenuItem onClick={() => onConvert(lead)}>
+                          <UserCheck className="mr-2 h-4 w-4" /> Convert to Contact
+                        </DropdownMenuItem>
+                      )}
+                      {onDelete && (
+                        <DropdownMenuItem className="text-destructive" onClick={() => onDelete(lead.id)}>
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

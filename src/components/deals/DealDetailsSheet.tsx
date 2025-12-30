@@ -2,7 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { User, Building2, Calendar, DollarSign, Activity, Percent } from "lucide-react";
+import { User, Building2, Calendar, IndianRupee, Activity, Percent } from "lucide-react";
 import { Tables } from "@/integrations/supabase/types";
 
 interface DealDetailsSheetProps {
@@ -32,9 +32,9 @@ export function DealDetailsSheet({ deal, open, onOpenChange }: DealDetailsSheetP
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <span className="text-sm text-muted-foreground flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" /> Value
+                  <IndianRupee className="h-4 w-4" /> Value
                 </span>
-                <p className="font-medium text-lg">${Number(deal.value || 0).toLocaleString()}</p>
+                <p className="font-medium text-lg">₹{Number(deal.value || 0).toLocaleString()}</p>
               </div>
               <div className="space-y-1">
                 <span className="text-sm text-muted-foreground flex items-center gap-2">

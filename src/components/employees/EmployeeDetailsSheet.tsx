@@ -58,7 +58,7 @@ export function EmployeeDetailsSheet({ employee, open, onOpenChange }: EmployeeD
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground block">Salary</span>
-                  <p className="text-sm">${employee.salary?.toLocaleString() || "0"}</p>
+                  <p className="text-sm">₹{employee.salary?.toLocaleString() || "0"}</p>
                 </div>
               </div>
             </div>

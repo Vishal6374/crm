@@ -33,7 +33,7 @@ export function DealsTable({ deals, employees = [], onEdit, onDelete, onView, on
             <TableHead>Company</TableHead>
             <TableHead>Contact</TableHead>
             <TableHead>Stage</TableHead>
-            <TableHead>Value</TableHead>
+            <TableHead>Value (₹)</TableHead>
             <TableHead>Assigned</TableHead>
             <TableHead>Created</TableHead>
             <TableHead className="text-right">Actions</TableHead>
@@ -57,7 +57,7 @@ export function DealsTable({ deals, employees = [], onEdit, onDelete, onView, on
                     {deal.stage.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
                   </Badge>
                 </TableCell>
-                <TableCell>${Number(deal.value || 0).toLocaleString()}</TableCell>
+                <TableCell>₹{Number(deal.value || 0).toLocaleString()}</TableCell>
                 <TableCell>
                   {deal.assigned_to_profile?.full_name || "-"}
                 </TableCell>

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mail, Phone, Building, User, Calendar, DollarSign, Globe, FileText, Clock } from "lucide-react";
+import { Mail, Phone, Building, User, Calendar, IndianRupee, Globe, FileText, Clock } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -166,14 +166,14 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
 
             <div className="space-y-4">
               <h3 className="font-semibold text-lg flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-muted-foreground" />
+                <IndianRupee className="h-5 w-5 text-muted-foreground" />
                 Deal Information
               </h3>
               <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
                 <div>
                   <span className="text-sm text-muted-foreground block">Estimated Value</span>
                   <span className="font-semibold text-lg">
-                    ${Number(lead.value || 0).toLocaleString()}
+                    ₹{Number(lead.value || 0).toLocaleString()}
                   </span>
                 </div>
                 <div>

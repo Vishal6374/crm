@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Briefcase, DollarSign, TrendingUp, CheckCircle, Clock } from "lucide-react";
+import { Users, Briefcase, IndianRupee, TrendingUp, CheckCircle, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
@@ -119,8 +119,8 @@ export default function ReportsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-warning/10"><DollarSign className="h-5 w-5 text-warning" /></div>
-              <div><p className="text-sm text-muted-foreground">Total Revenue</p><p className="text-2xl font-bold">${stats.totalRevenue.toLocaleString()}</p></div>
+              <div className="p-2 rounded-lg bg-warning/10"><IndianRupee className="h-5 w-5 text-warning" /></div>
+              <div><p className="text-sm text-muted-foreground">Total Revenue</p><p className="text-2xl font-bold">₹{stats.totalRevenue.toLocaleString()}</p></div>
             </div>
           </CardContent>
         </Card>
@@ -151,7 +151,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value) => `$${Number(value).toLocaleString()}`} />
+                <Tooltip formatter={(value) => `₹${Number(value).toLocaleString()}`} />
                 <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -167,7 +167,7 @@ export default function ReportsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="month" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(value) => `$${Number(value).toLocaleString()}`} />
+              <Tooltip formatter={(value) => `₹${Number(value).toLocaleString()}`} />
               <Line type="monotone" dataKey="total" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: "hsl(var(--primary))" }} />
             </LineChart>
           </ResponsiveContainer>

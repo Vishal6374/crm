@@ -1,6 +1,5 @@
-import { Bell, Search, User, Check, Sun, Moon } from "lucide-react";
+import { Bell, User, Check, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,19 +82,7 @@ export function AppHeader() {
   }, [user?.id, fetchNotifications]);
 
   return (
-    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6">
-      {/* Search */}
-      <div className="flex items-center gap-4 flex-1 max-w-md">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search..."
-            className="pl-9 bg-muted/50 border-0 focus-visible:ring-1"
-          />
-        </div>
-      </div>
-
-      {/* Right side */}
+    <header className="h-16 border-b border-border bg-card flex items-center justify-end px-6">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
           <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />

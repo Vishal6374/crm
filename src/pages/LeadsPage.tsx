@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, LayoutList, LayoutGrid, Download, Trash2, CheckCircle } from "lucide-react";
+import { Plus, LayoutList, LayoutGrid, Download, Upload, Trash2, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -14,10 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
+import * as XLSX from "xlsx";
 
 export default function LeadsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [leads, setLeads] = useState<Tables<'leads'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
@@ -39,6 +42,11 @@ export default function LeadsPage() {
   const [isBulkActionOpen, setIsBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<"delete" | "status" | null>(null);
   const [bulkStatus, setBulkStatus] = useState("new");
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"csv" | "xlsx">("csv");
+  const [exportScope, setExportScope] = useState<"selected" | "filtered">("selected");
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   useEffect(() => {
     fetchLeads();
@@ -219,28 +227,106 @@ export default function LeadsPage() {
     fetchLeads();
   };
 
-  const handleExport = () => {
-    const headers = ["Company", "Contact", "Email", "Phone", "Status", "Source", "Value", "Notes", "Created At"];
-    const csvContent = [
-      headers.join(","),
-      ...filteredLeads.map(lead => [
-        `"${lead.company_name || lead.title || ""}"`,
-        `"${lead.contact_name || ""}"`,
-        `"${lead.email || ""}"`,
-        `"${lead.phone || ""}"`,
-        `"${lead.status}"`,
-        `"${lead.source || ""}"`,
-        `"${lead.value || 0}"`,
-        `"${(lead.notes || "").replace(/"/g, '""')}"`,
-        `"${new Date(lead.created_at).toLocaleDateString()}"`
-      ].join(","))
-    ].join("\n");
+  const openExportDialog = () => setIsExportOpen(true);
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `leads_export_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+  const performExport = () => {
+    const scopeIds = exportScope === "selected" ? Array.from(selectedLeads) : filteredLeads.map(l => l.id);
+    const rows = (exportScope === "selected" ? filteredLeads.filter(l => scopeIds.includes(l.id)) : filteredLeads).map(lead => ({
+      Company: lead.company_name || lead.title || "",
+      Contact: lead.contact_name || "",
+      Email: lead.email || "",
+      Phone: lead.phone || "",
+      Status: lead.status,
+      Source: lead.source || "",
+      Value: Number(lead.value || 0),
+      Notes: lead.notes || "",
+      CreatedAt: new Date(lead.created_at).toLocaleDateString(),
+    }));
+
+    if (exportFormat === "csv") {
+      const headers = Object.keys(rows[0] || { Company: "", Contact: "", Email: "", Phone: "", Status: "", Source: "", Value: "", Notes: "", CreatedAt: "" });
+      const csvContent = [
+        headers.join(","),
+        ...rows.map(r => headers.map(h => {
+          const value = (r as Record<string, unknown>)[h];
+          return `"${String(value ?? "").replace(/"/g, '""')}"`;
+        }).join(",")),
+      ].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `leads_export_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+    } else {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Leads");
+      XLSX.writeFile(wb, `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+    setIsExportOpen(false);
+  };
+
+  const performImport = async () => {
+    if (!importFile) return;
+    try {
+      const ext = importFile.name.toLowerCase().split(".").pop();
+      if (ext === "csv") {
+        const text = await importFile.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
+        const records = lines.slice(1).map(line => {
+          const cols = line.split(",");
+          const obj: Record<string, string> = {};
+          headers.forEach((h, i) => { obj[h] = (cols[i] || "").replace(/^"|"$/g, ""); });
+          return obj;
+        });
+        await insertLeads(records);
+      } else {
+        const data = await importFile.arrayBuffer();
+        const wb = XLSX.read(data, { type: "array" });
+        const firstSheet = wb.SheetNames[0];
+        const sheet = wb.Sheets[firstSheet];
+        const records = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[];
+        await insertLeads(records);
+      }
+      toast({ title: "Leads imported successfully" });
+      setIsImportOpen(false);
+      setImportFile(null);
+      fetchLeads();
+    } catch (e) {
+      toast({ title: "Import failed", description: e instanceof Error ? e.message : "Unable to import file", variant: "destructive" });
+    }
+  };
+
+  const insertLeads = async (rows: Record<string, unknown>[]) => {
+    const normalize = (v: unknown) => (v === undefined || v === null) ? "" : String(v);
+    const payloads = rows.map(r => {
+      const company = normalize(r.company) || normalize(r.company_name) || normalize(r["Company"]) || normalize(r["Company Name"]) || normalize(r.title);
+      const contact = normalize(r.contact) || normalize(r.contact_name) || normalize(r["Contact"]);
+      const email = normalize(r.email) || normalize(r["Email"]);
+      const phone = normalize(r.phone) || normalize(r["Phone"]);
+      const status = (normalize(r.status) || normalize(r["Status"]) || "new").toLowerCase();
+      const source = normalize(r.source) || normalize(r["Source"]);
+      const notes = normalize(r.notes) || normalize(r["Notes"]);
+      const valueStr = normalize(r.value) || normalize(r["Value"]);
+      const valueNum = valueStr ? parseFloat(valueStr.replace(/[^0-9.-]/g, "")) : 0;
+      return {
+        company_name: company || null,
+        contact_name: contact || null,
+        email: email || null,
+        phone: phone || null,
+        status: ["new","contacted","qualified","proposal","negotiation","won","lost"].includes(status) ? status : "new",
+        source: source || null,
+        notes: notes || null,
+        description: notes || null,
+        value: valueNum,
+        created_by: user?.id || null,
+      };
+    });
+    if (payloads.length > 0) {
+      const { error } = await supabase.from("leads").insert(payloads);
+      if (error) throw error;
+    }
   };
 
   if (loading) {
@@ -255,7 +341,7 @@ export default function LeadsPage() {
           <p className="page-description">Manage your sales leads pipeline</p>
         </div>
         <div className="flex gap-2">
-          {selectedLeads.size > 0 && (
+          {selectedLeads.size > 0 && can("leads", "can_edit") && (
             <>
               <Button variant="outline" onClick={() => { setBulkActionType("status"); setIsBulkActionOpen(true); }}>
                 <CheckCircle className="mr-2 h-4 w-4" /> Update Status
@@ -265,8 +351,11 @@ export default function LeadsPage() {
               </Button>
             </>
           )}
-          <Button variant="outline" onClick={handleExport}>
+          <Button variant="outline" onClick={openExportDialog}>
             <Download className="mr-2 h-4 w-4" /> Export
+          </Button>
+          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" /> Import
           </Button>
           <Button 
             variant="outline"
@@ -276,9 +365,11 @@ export default function LeadsPage() {
           >
             {viewMode === "table" ? <LayoutGrid className="h-4 w-4" /> : <LayoutList className="h-4 w-4" />}
           </Button>
+          {can("leads", "can_create") && (
           <Button onClick={handleCreate}>
             <Plus className="mr-2 h-4 w-4" /> New Lead
           </Button>
+          )}
         </div>
       </div>
 
@@ -295,19 +386,19 @@ export default function LeadsPage() {
           selectedLeads={selectedLeads}
           onSelectLead={handleSelectLead}
           onSelectAll={handleSelectAll}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onConvert={handleConvert}
+          onEdit={can("leads", "can_edit") ? handleEdit : undefined}
+          onDelete={can("leads", "can_edit") ? handleDelete : undefined}
+          onConvert={can("leads", "can_edit") ? handleConvert : undefined}
           onView={handleView}
         />
       ) : (
         <LeadsKanban 
           leads={filteredLeads}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onConvert={handleConvert}
+          onEdit={can("leads", "can_edit") ? handleEdit : undefined}
+          onDelete={can("leads", "can_edit") ? handleDelete : undefined}
+          onConvert={can("leads", "can_edit") ? handleConvert : undefined}
           onView={handleView}
-          onUpdateStatus={(leadId, status) => updateLeadStage(leadId, status)}
+          onUpdateStatus={can("leads", "can_edit") ? (leadId, status) => updateLeadStage(leadId, status) : undefined}
         />
       )}
 
@@ -324,6 +415,7 @@ export default function LeadsPage() {
         onOpenChange={setIsDetailsOpen} 
       />
 
+      {can("leads", "can_edit") && (
       <Dialog open={isBulkActionOpen} onOpenChange={setIsBulkActionOpen}>
         <DialogContent>
           <DialogHeader>
@@ -355,6 +447,61 @@ export default function LeadsPage() {
             <Button variant={bulkActionType === "delete" ? "destructive" : "default"} onClick={handleBulkAction}>
               Confirm
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      )}
+
+      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Leads</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Format</Label>
+              <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as "csv" | "xlsx")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="csv">CSV</SelectItem>
+                  <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Scope</Label>
+              <Select value={exportScope} onValueChange={(v) => setExportScope(v as "selected" | "filtered")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="selected">Selected only</SelectItem>
+                  <SelectItem value="filtered">All filtered</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
+            <Button onClick={performExport}>Export</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import Leads</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <input
+              type="file"
+              accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, .xlsx"
+              onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+            />
+            <p className="text-sm text-muted-foreground">Supported: CSV or Excel (.xlsx). Columns: Company, Contact, Email, Phone, Status, Source, Value, Notes.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsImportOpen(false); setImportFile(null); }}>Cancel</Button>
+            <Button onClick={performImport} disabled={!importFile}>Import</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

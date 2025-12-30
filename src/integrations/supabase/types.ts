@@ -14,16 +14,19 @@ export type Database = {
           id: string
           full_name: string | null
           email: string | null
+          organization_id: string
         }
         Insert: {
           id: string
           full_name?: string | null
           email?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
           full_name?: string | null
           email?: string | null
+          organization_id?: string
         }
       }
       companies: {
@@ -39,6 +42,7 @@ export type Database = {
           country: string | null
           created_at: string
           created_by: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -52,6 +56,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           created_by?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -65,6 +70,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           created_by?: string | null
+          organization_id?: string
         }
       }
       contacts: {
@@ -78,6 +84,7 @@ export type Database = {
           company_id: string | null
           created_at: string
           created_by: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -89,6 +96,7 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           created_by?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -100,6 +108,36 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           created_by?: string | null
+          organization_id?: string
+        }
+      }
+      projects: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          owner_id: string | null
+          created_at: string
+          updated_at: string
+          organization_id: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          owner_id?: string | null
+          created_at?: string
+          updated_at?: string
+          organization_id?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          owner_id?: string | null
+          created_at?: string
+          updated_at?: string
+          organization_id?: string
         }
       }
       leads: {
@@ -119,6 +157,7 @@ export type Database = {
           description: string | null
           notes: string | null
           user_id: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -136,6 +175,7 @@ export type Database = {
           description?: string | null
           notes?: string | null
           user_id?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -153,6 +193,7 @@ export type Database = {
           description?: string | null
           notes?: string | null
           user_id?: string | null
+          organization_id?: string
         }
       }
       deals: {
@@ -169,6 +210,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           assigned_to: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -183,6 +225,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           assigned_to?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -197,6 +240,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           assigned_to?: string | null
+          organization_id?: string
         }
       }
       tasks: {
@@ -212,6 +256,8 @@ export type Database = {
           assigned_to: string | null
           lead_id: string | null
           deal_id: string | null
+          project_id: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -225,6 +271,8 @@ export type Database = {
           assigned_to?: string | null
           lead_id?: string | null
           deal_id?: string | null
+          project_id?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -238,6 +286,8 @@ export type Database = {
           assigned_to?: string | null
           lead_id?: string | null
           deal_id?: string | null
+          project_id?: string | null
+          organization_id?: string
         }
       }
       employees: {
@@ -253,6 +303,7 @@ export type Database = {
           hire_date: string | null
           status: "active" | "inactive" | "terminated"
           created_at: string
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -266,6 +317,7 @@ export type Database = {
           hire_date?: string | null
           status?: "active" | "inactive" | "terminated"
           created_at?: string
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -279,6 +331,7 @@ export type Database = {
           hire_date?: string | null
           status?: "active" | "inactive" | "terminated"
           created_at?: string
+          organization_id?: string
         }
       }
       departments: {
@@ -286,16 +339,19 @@ export type Database = {
           id: string
           name: string
           description: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
           name: string
           description?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
           name?: string
           description?: string | null
+          organization_id?: string
         }
       }
       designations: {
@@ -303,16 +359,19 @@ export type Database = {
           id: string
           title: string
           description: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
           title: string
           description?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
           title?: string
           description?: string | null
+          organization_id?: string
         }
       }
       activity_logs: {
@@ -324,6 +383,7 @@ export type Database = {
           description: string | null
           user_id: string | null
           created_at: string
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -333,6 +393,7 @@ export type Database = {
           description?: string | null
           user_id?: string | null
           created_at?: string
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -342,6 +403,7 @@ export type Database = {
           description?: string | null
           user_id?: string | null
           created_at?: string
+          organization_id?: string
         }
       }
       notifications: {
@@ -353,7 +415,10 @@ export type Database = {
           read: boolean
           entity_type: string | null
           entity_id: string | null
+          project_id: string | null
+          meeting_id: string | null
           created_at: string
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -363,7 +428,10 @@ export type Database = {
           read?: boolean
           entity_type?: string | null
           entity_id?: string | null
+          project_id?: string | null
+          meeting_id?: string | null
           created_at?: string
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -373,7 +441,10 @@ export type Database = {
           read?: boolean
           entity_type?: string | null
           entity_id?: string | null
+          project_id?: string | null
+          meeting_id?: string | null
           created_at?: string
+          organization_id?: string
         }
       }
       chat_messages: {
@@ -383,6 +454,7 @@ export type Database = {
           sender_id: string
           content: string
           created_at: string
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -390,6 +462,7 @@ export type Database = {
           sender_id: string
           content: string
           created_at?: string
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -397,6 +470,7 @@ export type Database = {
           sender_id?: string
           content?: string
           created_at?: string
+          organization_id?: string
         }
       }
       chat_channels: {
@@ -406,6 +480,8 @@ export type Database = {
           name: string | null
           created_by: string
           created_at: string
+          project_id: string | null
+          organization_id: string
         }
         Insert: {
           id?: string
@@ -413,6 +489,8 @@ export type Database = {
           name?: string | null
           created_by: string
           created_at?: string
+          project_id?: string | null
+          organization_id?: string
         }
         Update: {
           id?: string
@@ -420,6 +498,31 @@ export type Database = {
           name?: string | null
           created_by?: string
           created_at?: string
+          project_id?: string | null
+          organization_id?: string
+        }
+      }
+      project_members: {
+        Row: {
+          id: string
+          project_id: string
+          employee_id: string
+          role: string | null
+          added_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          employee_id: string
+          role?: string | null
+          added_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          employee_id?: string
+          role?: string | null
+          added_at?: string
         }
       }
       chat_participants: {
@@ -427,16 +530,19 @@ export type Database = {
           id: string
           channel_id: string
           user_id: string
+          organization_id: string
         }
         Insert: {
           id?: string
           channel_id: string
           user_id: string
+          organization_id?: string
         }
         Update: {
           id?: string
           channel_id?: string
           user_id?: string
+          organization_id?: string
         }
       }
       leave_requests: {
@@ -510,6 +616,13 @@ export type Database = {
           task_id?: string
           user_id?: string
         }
+      }
+    }
+    TablesExtra: {
+      organizations: {
+        Row: { id: string; name: string; created_at: string; updated_at: string }
+        Insert: { id?: string; name: string; created_at?: string; updated_at?: string }
+        Update: { id?: string; name?: string; created_at?: string; updated_at?: string }
       }
     }
     Views: {

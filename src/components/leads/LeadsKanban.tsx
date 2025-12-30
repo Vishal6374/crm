@@ -18,10 +18,10 @@ const statusColumns = [
 
 interface LeadsKanbanProps {
   leads: Tables<'leads'>[];
-  onEdit: (lead: Tables<'leads'>) => void;
-  onDelete: (id: string) => void;
-  onConvert: (lead: Tables<'leads'>) => void;
-  onView: (lead: Tables<'leads'>) => void;
+  onEdit?: (lead: Tables<'leads'>) => void;
+  onDelete?: (id: string) => void;
+  onConvert?: (lead: Tables<'leads'>) => void;
+  onView?: (lead: Tables<'leads'>) => void;
   onUpdateStatus?: (leadId: string, status: string) => void;
 }
 
@@ -77,25 +77,33 @@ export function LeadsKanban({ leads, onEdit, onDelete, onConvert, onView, onUpda
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => onView(lead)}>
-                              <Eye className="mr-2 h-4 w-4" /> View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onEdit(lead)}>
-                              <Pencil className="mr-2 h-4 w-4" /> Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onConvert(lead)}>
-                              <UserCheck className="mr-2 h-4 w-4" /> Convert
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onClick={() => onDelete(lead.id)}>
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete
-                            </DropdownMenuItem>
+                            {onView && (
+                              <DropdownMenuItem onClick={() => onView(lead)}>
+                                <Eye className="mr-2 h-4 w-4" /> View Details
+                              </DropdownMenuItem>
+                            )}
+                            {onEdit && (
+                              <DropdownMenuItem onClick={() => onEdit(lead)}>
+                                <Pencil className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                            )}
+                            {onConvert && (
+                              <DropdownMenuItem onClick={() => onConvert(lead)}>
+                                <UserCheck className="mr-2 h-4 w-4" /> Convert
+                              </DropdownMenuItem>
+                            )}
+                            {onDelete && (
+                              <DropdownMenuItem className="text-destructive" onClick={() => onDelete(lead.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
                       
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>{lead.source || "No Source"}</span>
-                        <span>${Number(lead.value || 0).toLocaleString()}</span>
+                        <span>₹{Number(lead.value || 0).toLocaleString()}</span>
                       </div>
                     </CardContent>
                   </Card>

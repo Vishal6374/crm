@@ -210,7 +210,7 @@ export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFor
                 name="value"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Value ($)</FormLabel>
+                    <FormLabel>Value (₹)</FormLabel>
                     <FormControl>
                       <Input {...field} type="number" placeholder="0.00" />
                     </FormControl>

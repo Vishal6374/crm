@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Pencil, Trash2, CheckCircle, XCircle, MoveHorizontal, MessageSquare, DollarSign, User } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, CheckCircle, XCircle, MoveHorizontal, MessageSquare, IndianRupee, User } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { Tables } from "@/integrations/supabase/types";
 
@@ -42,7 +42,7 @@ export function DealsKanban({ stages, employees = [], onDragOver, onDrop, onDrag
                 <Badge variant="secondary">{stage.deals.length}</Badge>
               </div>
               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                <DollarSign className="h-3 w-3" />{stage.total.toLocaleString()}
+                <IndianRupee className="h-3 w-3" />{stage.total.toLocaleString()}
               </p>
             </div>
             <div className="p-2 space-y-2">
@@ -61,7 +61,7 @@ export function DealsKanban({ stages, employees = [], onDragOver, onDrop, onDrag
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <h4 className="font-medium text-sm truncate">{deal.title}</h4>
-                          <p className="text-xs text-muted-foreground">${Number(deal.value || 0).toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground">₹{Number(deal.value || 0).toLocaleString()}</p>
                           {deal.companies?.name && <p className="text-xs text-muted-foreground mt-1">{deal.companies.name}</p>}
                           {deal.assigned_to_profile && (
                              <p className="text-xs text-primary flex items-center gap-1 mt-1">
@@ -75,7 +75,7 @@ export function DealsKanban({ stages, employees = [], onDragOver, onDrop, onDrag
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(deal); }}>
-                                <DollarSign className="mr-2 h-4 w-4" /> View Details
+                                <IndianRupee className="mr-2 h-4 w-4" /> View Details
                             </DropdownMenuItem>
                             {onAssign && (
                                 <DropdownMenuSub>

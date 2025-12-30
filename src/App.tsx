@@ -25,6 +25,9 @@ import UserRolesPage from "@/pages/UserRolesPage";
 import ActivityLogsPage from "@/pages/ActivityLogsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import ChatPage from "@/pages/ChatPage";
+import ProjectsPage from "@/pages/ProjectsPage";
+import ProjectDetailPage from "@/pages/ProjectDetailPage";
+import MeetingsPage from "@/pages/MeetingsPage";
 import NotFound from "@/pages/NotFound";
 import { ThemeProvider } from "./components/theme-provider";
 
@@ -48,7 +51,10 @@ const App = () => (
               <Route path="contacts" element={<ContactsPage />} />
               <Route path="companies" element={<CompaniesPage />} />
               <Route path="deals" element={<DealsPage />} />
+              <Route path="projects" element={<ProjectsPage />} />
+              <Route path="projects/:id" element={<ProjectDetailPage />} />
               <Route path="tasks" element={<TasksPage />} />
+              <Route path="meetings" element={<MeetingsPage />} />
               <Route path="calendar" element={<CalendarPage />} />
               <Route path="employees" element={<EmployeesPage />} />
               <Route path="attendance" element={<AttendancePage />} />

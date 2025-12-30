@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,18 +26,22 @@ const priorityColors: Record<string, string> = {
 type Task = Tables<"tasks"> & {
   lead_id?: string | null
   deal_id?: string | null
+  project_id?: string | null
 };
 type ProfileSummary = Pick<Tables<"profiles">, "id" | "full_name" | "email">;
 type LeadSummary = { id: string; title?: string | null; company_name?: string | null };
 type DealSummary = { id: string; title: string; value?: number | null };
+type ProjectSummary = { id: string; name: string };
 
 export default function TasksPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [leads, setLeads] = useState<LeadSummary[]>([]);
   const [deals, setDeals] = useState<DealSummary[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [taskCollaborators, setTaskCollaborators] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -55,6 +60,7 @@ export default function TasksPage() {
     assigned_to: "",
     lead_id: "",
     deal_id: "",
+    project_id: null as string | null,
   });
 
   const fetchTaskCollaborators = useCallback(async (taskIds: string[]) => {
@@ -113,12 +119,21 @@ export default function TasksPage() {
     if (data) setDeals(data);
   }, []);
 
+  const fetchProjects = useCallback(async () => {
+    const { data } = await supabase
+      .from("projects")
+      .select("id, name")
+      .order("name");
+    if (data) setProjects(data as ProjectSummary[]);
+  }, []);
+
   useEffect(() => {
     fetchTasks();
     fetchProfiles();
     fetchLeads();
     fetchDeals();
-  }, [fetchTasks, fetchProfiles, fetchLeads, fetchDeals]);
+    fetchProjects();
+  }, [fetchTasks, fetchProfiles, fetchLeads, fetchDeals, fetchProjects]);
 
   async function createTask(e: React.FormEvent) {
     e.preventDefault();
@@ -131,6 +146,7 @@ export default function TasksPage() {
       assigned_to: formData.assigned_to || null,
       lead_id: formData.lead_id || null,
       deal_id: formData.deal_id || null,
+      project_id: formData.project_id || null,
       created_by: user?.id,
     }]);
     if (error) {
@@ -138,7 +154,7 @@ export default function TasksPage() {
     } else {
       toast({ title: "Task created successfully" });
       setDialogOpen(false);
-      setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "" });
+      setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "", project_id: "" });
       setEditingId(null);
       fetchTasks();
     }
@@ -158,6 +174,7 @@ export default function TasksPage() {
         assigned_to: formData.assigned_to || null,
         lead_id: formData.lead_id || null,
         deal_id: formData.deal_id || null,
+        project_id: formData.project_id || null,
       })
       .eq("id", editingId);
     if (error) {
@@ -165,7 +182,7 @@ export default function TasksPage() {
     } else {
       toast({ title: "Task updated successfully" });
       setDialogOpen(false);
-      setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "" });
+      setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "", project_id: "" });
       setEditingId(null);
       fetchTasks();
     }
@@ -414,13 +431,14 @@ export default function TasksPage() {
           <h1 className="page-title">Tasks</h1>
           <p className="page-description">Manage your work items</p>
         </div>
+        <div />
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
             setDialogOpen(open);
             if (!open) {
               setEditingId(null);
-              setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "" });
+              setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "", project_id: null });
             }
           }}
         >
@@ -428,7 +446,7 @@ export default function TasksPage() {
             <Button
               onClick={() => {
                 setEditingId(null);
-                setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "" });
+                setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "", project_id: null });
               }}
             >
               <Plus className="mr-2 h-4 w-4" />New Task
@@ -477,8 +495,22 @@ export default function TasksPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Project</Label>
+                <Select value={formData.project_id ?? "none"} onValueChange={(v) => setFormData({ ...formData, project_id: v === "none" ? null : v })}>
+                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Link Lead</Label>

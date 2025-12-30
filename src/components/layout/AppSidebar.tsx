@@ -14,8 +14,9 @@ import {
   Calendar,
   ClipboardList,
   Clock,
-  DollarSign,
+  IndianRupee,
   CalendarDays,
+  CalendarCheck,
   BarChart3,
   Settings,
   ChevronLeft,
@@ -27,6 +28,7 @@ import {
   FileText,
   Activity,
   MessageSquare,
+  Folder,
 } from "lucide-react";
 
 const navigation = [
@@ -36,14 +38,16 @@ const navigation = [
   { name: "Contacts", href: "/contacts", icon: UserCircle },
   { name: "Companies", href: "/companies", icon: Building2 },
   { name: "Deals", href: "/deals", icon: Briefcase },
+  { name: "Projects", href: "/projects", icon: Folder },
   { name: "Tasks", href: "/tasks", icon: ClipboardList },
   { name: "Calendar", href: "/calendar", icon: Calendar },
+  { name: "Meetings", href: "/meetings", icon: CalendarCheck },
 ];
 
 const hrmNavigation = [
   { name: "Employees", href: "/employees", icon: Users },
   { name: "Attendance", href: "/attendance", icon: Clock },
-  { name: "Payroll", href: "/payroll", icon: DollarSign },
+  { name: "Payroll", href: "/payroll", icon: IndianRupee },
   { name: "Leave Requests", href: "/leave-requests", icon: CalendarDays },
 ];
 
