@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,7 @@ const leaveTypeLabels: Record<string, string> = {
 export default function LeaveRequestsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const [leaveRequests, setLeaveRequests] = useState<(Database["public"]["Tables"]["leave_requests"]["Row"] & { employees?: { employee_id: string; profiles?: { full_name: string | null } } })[]>([]);
   const [employees, setEmployees] = useState<{ id: string; employee_id: string; profiles?: { full_name: string | null } }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,20 +49,25 @@ export default function LeaveRequestsPage() {
   useEffect(() => {
     fetchLeaveRequests();
     fetchEmployees();
-  }, []);
+  }, [fetchLeaveRequests, fetchEmployees]);
 
-  async function fetchLeaveRequests() {
-    const { data: requestsData, error } = await supabase
+  const fetchLeaveRequests = useCallback(async () => {
+    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
+    const currentEmpId = (empsData || []).find((e) => e.user_id === user?.id)?.id || null;
+    let builder = supabase
       .from("leave_requests")
       .select("*")
       .order("created_at", { ascending: false });
+    if (role === "employee" && currentEmpId) {
+      builder = builder.eq("employee_id", currentEmpId);
+    }
+    const { data: requestsData, error } = await builder;
     
     if (error) {
       console.error("Error fetching leave requests:", error);
       return;
     }
 
-    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
     const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
 
     const joinedRequests = requestsData.map(req => {
@@ -79,12 +84,12 @@ export default function LeaveRequestsPage() {
 
     setLeaveRequests(joinedRequests);
     setLoading(false);
-  }
+  }, [role, user?.id]);
 
-  async function fetchEmployees() {
+  const fetchEmployees = useCallback(async () => {
     const { data: empsData } = await supabase
       .from("employees")
-      .select("id, employee_id, user_id")
+      .select("id, employee_id, user_id, status")
       .eq("status", "active")
       .order("employee_id");
     
@@ -101,11 +106,20 @@ export default function LeaveRequestsPage() {
       };
     });
 
-    setEmployees(joinedEmployees);
-  }
+    if (role === "employee") {
+      const me = joinedEmployees.find((e) => e.id && empsData.find((x) => x.id === e.id)?.user_id === user?.id);
+      setEmployees(me ? [me] : []);
+    } else {
+      setEmployees(joinedEmployees);
+    }
+  }, [role, user?.id]);
 
   async function createLeaveRequest(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("leave_requests", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to create leave requests.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("leave_requests").insert([{
       employee_id: formData.employee_id,
       leave_type: formData.leave_type as "annual" | "sick" | "maternity" | "paternity" | "emergency",
@@ -124,6 +138,10 @@ export default function LeaveRequestsPage() {
   }
 
   async function updateLeaveStatus(id: string, status: "approved" | "rejected") {
+    if (!can("leave_requests", "can_approve")) {
+      toast({ title: "Not allowed", description: "You do not have permission to approve or reject leave requests.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase
       .from("leave_requests")
       .update({ status, approved_by: user?.id, approved_at: new Date().toISOString() })
@@ -192,6 +210,10 @@ export default function LeaveRequestsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!can("leave_requests", "can_view") ? (
+        <div className="text-sm text-muted-foreground">You do not have permission to view leave requests.</div>
+      ) : (
+      <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Leave Requests</h1>
@@ -316,6 +338,8 @@ export default function LeaveRequestsPage() {
           </table>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

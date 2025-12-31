@@ -31,7 +31,7 @@ interface LeadFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-  initialData?: Tables<'leads'>; 
+  initialData?: LeadWithDetails; 
 }
 
 export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFormProps) {

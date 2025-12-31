@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
+import { useModules } from "@/hooks/use-modules";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   LayoutDashboard,
   Users,
@@ -68,6 +70,8 @@ interface AppSidebarProps {
 export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const location = useLocation();
   const { signOut } = useAuth();
+  const { isEnabled } = useModules();
+  const { can, role } = usePermissions();
 
   const isActive = (href: string) => location.pathname === href;
 
@@ -124,9 +128,33 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
               </p>
             )}
             <nav className="space-y-1">
-              {navigation.map((item) => (
-                <NavItem key={item.name} item={item} />
-              ))}
+              {navigation
+                .filter((item) => {
+                  const map: Record<string, string> = {
+                    Dashboard: "dashboard",
+                    Chat: "chat",
+                    Leads: "leads",
+                    Contacts: "contacts",
+                    Companies: "companies",
+                    Deals: "deals",
+                    Projects: "projects",
+                    Tasks: "tasks",
+                    Calendar: "calendar",
+                    Meetings: "calendar",
+                  };
+                  const m = map[item.name] || "";
+                  const enabled = m ? isEnabled(m) : true;
+                  const allowed =
+                    item.name === "Dashboard"
+                      ? role !== "employee"
+                      : m
+                      ? can(m, "can_view")
+                      : true;
+                  return enabled && allowed;
+                })
+                .map((item) => (
+                  <NavItem key={item.name} item={item} />
+                ))}
             </nav>
           </div>
 
@@ -138,9 +166,22 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
               </p>
             )}
             <nav className="space-y-1">
-              {hrmNavigation.map((item) => (
-                <NavItem key={item.name} item={item} />
-              ))}
+              {hrmNavigation
+                .filter((item) => {
+                  const map: Record<string, string> = {
+                    Employees: "employees",
+                    Attendance: "attendance",
+                    Payroll: "payroll",
+                    "Leave Requests": "leave_requests",
+                  };
+                  const m = map[item.name] || "";
+                  const enabled = m ? isEnabled(m) : true;
+                  const allowed = m ? can(m, "can_view") : true;
+                  return enabled && allowed;
+                })
+                .map((item) => (
+                  <NavItem key={item.name} item={item} />
+                ))}
             </nav>
           </div>
 
@@ -152,9 +193,24 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
               </p>
             )}
             <nav className="space-y-1">
-              {adminNavigation.map((item) => (
-                <NavItem key={item.name} item={item} />
-              ))}
+              {adminNavigation
+                .filter((item) => {
+                  const map: Record<string, string> = {
+                    Reports: "reports",
+                    Departments: "departments",
+                    Designations: "designations",
+                    "User Roles": "user_roles",
+                    "Activity Logs": "activity_logs",
+                    Settings: "settings",
+                  };
+                  const m = map[item.name] || "";
+                  const enabled = m ? isEnabled(m) : true;
+                  const allowed = m ? can(m, "can_view") : true;
+                  return enabled && allowed;
+                })
+                .map((item) => (
+                  <NavItem key={item.name} item={item} />
+                ))}
             </nav>
           </div>
         </div>

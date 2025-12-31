@@ -17,11 +17,11 @@ const statusColumns = [
 ];
 
 interface LeadsKanbanProps {
-  leads: Tables<'leads'>[];
-  onEdit?: (lead: Tables<'leads'>) => void;
+  leads: LeadWithDetails[];
+  onEdit?: (lead: LeadWithDetails) => void;
   onDelete?: (id: string) => void;
-  onConvert?: (lead: Tables<'leads'>) => void;
-  onView?: (lead: Tables<'leads'>) => void;
+  onConvert?: (lead: LeadWithDetails) => void;
+  onView?: (lead: LeadWithDetails) => void;
   onUpdateStatus?: (leadId: string, status: string) => void;
 }
 

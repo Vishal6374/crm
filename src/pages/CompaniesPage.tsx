@@ -12,10 +12,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CompanyDetailsSheet } from "@/components/companies/CompanyDetailsSheet";
 import type { Database } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function CompaniesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [companies, setCompanies] = useState<Database["public"]["Tables"]["companies"]["Row"][]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -50,6 +52,17 @@ export default function CompaniesPage() {
   async function createCompany(e: React.FormEvent) {
     e.preventDefault();
     if (editingCompany) {
+      if (!can("companies", "can_edit")) {
+        toast({ title: "Not allowed", description: "You do not have permission to edit companies.", variant: "destructive" });
+        return;
+      }
+    } else {
+      if (!can("companies", "can_create")) {
+        toast({ title: "Not allowed", description: "You do not have permission to create companies.", variant: "destructive" });
+        return;
+      }
+    }
+    if (editingCompany) {
       const { error } = await supabase.from("companies").update({
         ...formData,
       }).eq("id", editingCompany.id);
@@ -81,6 +94,10 @@ export default function CompaniesPage() {
   );
 
   function openEdit(company: Database["public"]["Tables"]["companies"]["Row"]) {
+    if (!can("companies", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to edit companies.", variant: "destructive" });
+      return;
+    }
     setEditingCompany(company);
     setFormData({
       name: company.name || "",
@@ -96,6 +113,10 @@ export default function CompaniesPage() {
   }
 
   async function deleteCompany(id: string) {
+    if (!can("companies", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to delete companies.", variant: "destructive" });
+      return;
+    }
     if (!confirm("Delete this company?")) return;
     const { error } = await supabase.from("companies").delete().eq("id", id);
     if (error) {
@@ -112,31 +133,33 @@ export default function CompaniesPage() {
           <h1 className="page-title">Companies</h1>
           <p className="page-description">Manage your business accounts</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />New Company</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle>Create New Company</DialogTitle></DialogHeader>
-            <form onSubmit={createCompany} className="space-y-4">
-              <div><Label>Company Name</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><Label>Email</Label><Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /></div>
-                <div><Label>Phone</Label><Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><Label>Website</Label><Input value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} placeholder="https://" /></div>
-                <div><Label>Industry</Label><Input value={formData.industry} onChange={(e) => setFormData({ ...formData, industry: e.target.value })} /></div>
-              </div>
-              <div><Label>Address</Label><Input value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><Label>City</Label><Input value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} /></div>
-                <div><Label>Country</Label><Input value={formData.country} onChange={(e) => setFormData({ ...formData, country: e.target.value })} /></div>
-              </div>
-              <Button type="submit" className="w-full">Create Company</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {can("companies", "can_create") && (
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" />New Company</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader><DialogTitle>Create New Company</DialogTitle></DialogHeader>
+              <form onSubmit={createCompany} className="space-y-4">
+                <div><Label>Company Name</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Email</Label><Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /></div>
+                  <div><Label>Phone</Label><Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Website</Label><Input value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} placeholder="https://" /></div>
+                  <div><Label>Industry</Label><Input value={formData.industry} onChange={(e) => setFormData({ ...formData, industry: e.target.value })} /></div>
+                </div>
+                <div><Label>Address</Label><Input value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>City</Label><Input value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} /></div>
+                  <div><Label>Country</Label><Input value={formData.country} onChange={(e) => setFormData({ ...formData, country: e.target.value })} /></div>
+                </div>
+                <Button type="submit" className="w-full">Create Company</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="flex gap-4">
@@ -187,21 +210,25 @@ export default function CompaniesPage() {
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => { setSelectedCompany(company); setDetailsOpen(true); }}>
-                        <Eye className="mr-2 h-4 w-4" /> View Details
-                      </DropdownMenuItem>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => { setSelectedCompany(company); setDetailsOpen(true); }}>
+                      <Eye className="mr-2 h-4 w-4" /> View Details
+                    </DropdownMenuItem>
+                    {can("companies", "can_edit") && (
                       <DropdownMenuItem onClick={() => openEdit(company)}>
                         <Pencil className="mr-2 h-4 w-4" /> Edit
                       </DropdownMenuItem>
+                    )}
+                    {can("companies", "can_edit") && (
                       <DropdownMenuItem onClick={() => deleteCompany(company.id)}>
                         <Trash2 className="mr-2 h-4 w-4" /> Delete
                       </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardContent>
-            </Card>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </CardContent>
+          </Card>
           ))
         )}
       </div>

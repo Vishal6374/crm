@@ -11,9 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function DesignationsPage() {
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [designations, setDesignations] = useState<(Tables<'designations'> & { departments: Pick<Tables<'departments'>, 'name'> | null })[]>([]);
   const [departments, setDepartments] = useState<Pick<Tables<'departments'>, 'id' | 'name'>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +45,10 @@ export default function DesignationsPage() {
 
   async function createDesignation(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("designations", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to create designations.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("designations").insert([{
       title: formData.title,
       description: formData.description,
@@ -62,6 +68,10 @@ export default function DesignationsPage() {
   async function updateDesignation(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId) return;
+    if (!can("designations", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to edit designations.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("designations").update({
       title: formData.title,
       description: formData.description,
@@ -79,6 +89,10 @@ export default function DesignationsPage() {
   }
 
   async function deleteDesignation(id: string) {
+    if (!can("designations", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to delete designations.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("designations").delete().eq("id", id);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -110,15 +124,17 @@ export default function DesignationsPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button
-              onClick={() => {
-                setEditingId(null);
-                setFormData({ title: "", description: "", department_id: "" });
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Designation
-            </Button>
+            {can("designations", "can_create") && (
+              <Button
+                onClick={() => {
+                  setEditingId(null);
+                  setFormData({ title: "", description: "", department_id: "" });
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Designation
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{editingId ? "Edit Designation" : "Create Designation"}</DialogTitle></DialogHeader>
@@ -161,24 +177,28 @@ export default function DesignationsPage() {
                     {desig.description && <p className="text-sm text-muted-foreground mt-1">{desig.description}</p>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setEditingId(desig.id);
-                        setFormData({
-                          title: desig.title || "",
-                          description: desig.description || "",
-                          department_id: desig.department_id || "",
-                        });
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteDesignation(desig.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {can("designations", "can_edit") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingId(desig.id);
+                          setFormData({
+                            title: desig.title || "",
+                            description: desig.description || "",
+                            department_id: desig.department_id || "",
+                          });
+                          setDialogOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {can("designations", "can_edit") && (
+                      <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteDesignation(desig.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>

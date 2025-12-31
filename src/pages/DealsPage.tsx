@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { DealsTable } from "@/components/deals/DealsTable";
 import { DealsKanban } from "@/components/deals/DealsKanban";
 import { DealDetailsSheet } from "@/components/deals/DealDetailsSheet";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const stages = [
   { value: "prospecting", label: "Prospecting", color: "bg-muted text-muted-foreground" },
@@ -28,14 +29,15 @@ const stages = [
 export default function DealsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [deals, setDeals] = useState<(Database["public"]["Tables"]["deals"]["Row"] & { companies?: { name: string }, contacts?: { first_name: string, last_name: string }, assigned_to_profile?: { full_name: string } })[]>([]);
+  const { can, role } = usePermissions();
+  const [deals, setDeals] = useState<DealWithDetails[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [contacts, setContacts] = useState<{ id: string; first_name: string; last_name: string }[]>([]);
   const [employees, setEmployees] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("kanban");
-  const [selectedDeal, setSelectedDeal] = useState<(Database["public"]["Tables"]["deals"]["Row"] & { companies?: { name: string }, contacts?: { first_name: string, last_name: string }, assigned_to_profile?: { full_name: string } }) | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [commentsOpenDealId, setCommentsOpenDealId] = useState<string | null>(null);
   const [dealComments, setDealComments] = useState<Record<string, Array<{ id: string; content: string; created_at: string; author_id: string }>>>({});
@@ -52,30 +54,18 @@ export default function DealsPage() {
     expected_close_date: "",
   });
 
-  useEffect(() => {
-    fetchDeals();
-    fetchCompanies();
-    fetchContacts();
-    fetchEmployees();
-  }, []);
-
-  async function fetchEmployees() {
-    const { data } = await supabase.from("profiles").select("id, full_name, email");
-    if (data) setEmployees(data);
-  }
-
-  async function fetchDeals() {
-    const { data: dealsData, error } = await supabase
-      .from("deals")
-      .select("*")
-      .order("created_at", { ascending: false });
+  const fetchDeals = useCallback(async () => {
+    let query = supabase.from("deals").select("*").order("created_at", { ascending: false });
+    if (role === "employee" && user?.id) {
+      query = query.eq("assigned_to", user.id);
+    }
+    const { data: dealsData, error } = await query;
     
     if (error) {
       console.error("Error fetching deals:", error);
       return;
     }
 
-    // Manual join to avoid FK issues
     const [compRes, contRes, profRes] = await Promise.all([
       supabase.from("companies").select("id, name"),
       supabase.from("contacts").select("id, first_name, last_name"),
@@ -91,7 +81,20 @@ export default function DealsPage() {
 
     setDeals(joinedDeals);
     setLoading(false);
+  }, [role, user?.id]);
+
+  useEffect(() => {
+    fetchDeals();
+    fetchCompanies();
+    fetchContacts();
+    fetchEmployees();
+  }, [fetchDeals]);
+
+  async function fetchEmployees() {
+    const { data } = await supabase.from("profiles").select("id, full_name, email");
+    if (data) setEmployees(data);
   }
+
 
   async function fetchCompanies() {
     const { data } = await supabase.from("companies").select("id, name").order("name");
@@ -248,7 +251,7 @@ export default function DealsPage() {
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />New Deal</Button>
+            {can("deals", "can_create") && <Button><Plus className="mr-2 h-4 w-4" />New Deal</Button>}
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader><DialogTitle>Create New Deal</DialogTitle></DialogHeader>
@@ -315,10 +318,10 @@ export default function DealsPage() {
         <DealsTable 
           deals={deals}
           employees={employees}
-          onEdit={(deal) => { /* Implement edit open */ }}
-          onDelete={deleteDeal}
+          onEdit={can("deals", "can_edit") ? ((deal) => { /* Implement edit open */ }) : undefined}
+          onDelete={can("deals", "can_edit") ? deleteDeal : undefined}
           onView={(deal) => { setSelectedDeal(deal); setDetailsOpen(true); }}
-          onAssign={handleAssign}
+          onAssign={can("deals", "can_edit") ? handleAssign : undefined}
         />
       ) : (
         <DealsKanban 
@@ -329,13 +332,13 @@ export default function DealsPage() {
             const dealId = e.dataTransfer.getData("dealId");
             if (!dealId) return;
             const deal = deals.find((d) => d.id === dealId);
-            if (deal) updateDealStage(deal, stage);
+            if (deal && can("deals", "can_edit")) updateDealStage(deal, stage);
           }}
           onDragStart={(e, id) => e.dataTransfer.setData("dealId", id)}
-          onUpdateStage={updateDealStage}
-          onDelete={deleteDeal}
+          onUpdateStage={can("deals", "can_edit") ? updateDealStage : undefined}
+          onDelete={can("deals", "can_edit") ? deleteDeal : undefined}
           onComments={(id) => { setCommentsOpenDealId(id); fetchDealMessages(id); }}
-          onAssign={handleAssign}
+          onAssign={can("deals", "can_edit") ? handleAssign : undefined}
           onView={(deal) => { setSelectedDeal(deal); setDetailsOpen(true); }}
         />
       )}

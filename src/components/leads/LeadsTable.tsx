@@ -18,15 +18,15 @@ const statusColors: Record<string, string> = {
 };
 
 interface LeadsTableProps {
-  leads: Tables<'leads'>[];
+  leads: LeadWithDetails[];
   selectedLeads: Set<string>;
   employees?: Tables<'profiles'>[];
   onSelectLead: (id: string, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
-  onEdit?: (lead: Tables<'leads'>) => void;
+  onEdit?: (lead: LeadWithDetails) => void;
   onDelete?: (id: string) => void;
-  onConvert?: (lead: Tables<'leads'>) => void;
-  onView?: (lead: Tables<'leads'>) => void;
+  onConvert?: (lead: LeadWithDetails) => void;
+  onView?: (lead: LeadWithDetails) => void;
   onAssign?: (leadId: string, userId: string) => void;
 }
 

@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
 
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -17,6 +19,8 @@ const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function CalendarPage() {
   const { user } = useAuth();
+  const { can, role } = usePermissions();
+  const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<Database["public"]["Tables"]["tasks"]["Row"][]>([]);
   const [leaveRequests, setLeaveRequests] = useState<(Database["public"]["Tables"]["leave_requests"]["Row"] & { employees?: { profiles?: { full_name: string | null } } })[]>([]);
@@ -30,21 +34,35 @@ export default function CalendarPage() {
     const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
 
-    const [tasksRes, leaveRes] = await Promise.all([
-      supabase.from("tasks").select("*").gte("due_date", startOfMonth.toISOString()).lte("due_date", endOfMonth.toISOString()),
-      supabase.from("leave_requests").select("*").gte("start_date", startOfMonth.toISOString().split("T")[0]).lte("end_date", endOfMonth.toISOString().split("T")[0]),
+    let tasksQuery = supabase
+      .from("tasks")
+      .select("*")
+      .gte("due_date", startOfMonth.toISOString())
+      .lte("due_date", endOfMonth.toISOString());
+    if (role === "employee") {
+      tasksQuery = tasksQuery.eq("assigned_to", user?.id || "");
+    }
+    const [tasksRes, leaveRes, empRes, profRes] = await Promise.all([
+      tasksQuery,
+      supabase
+        .from("leave_requests")
+        .select("*")
+        .gte("start_date", startOfMonth.toISOString().split("T")[0])
+        .lte("end_date", endOfMonth.toISOString().split("T")[0]),
+      supabase.from("employees").select("id, user_id"),
+      supabase.from("profiles").select("id, full_name"),
     ]);
 
     if (tasksRes.data) setTasks(tasksRes.data);
     
     if (leaveRes.data) {
-      // Manual join to avoid foreign key relationship errors
-      const [empRes, profRes] = await Promise.all([
-        supabase.from("employees").select("id, user_id"),
-        supabase.from("profiles").select("id, full_name")
-      ]);
+      let leavesData = leaveRes.data;
+      if (role === "employee") {
+        const userEmpId = (empRes.data || []).find((e) => e.user_id === user?.id)?.id;
+        leavesData = userEmpId ? leavesData.filter((l) => l.employee_id === userEmpId) : [];
+      }
 
-      const joinedLeaves = leaveRes.data.map(leave => {
+      const joinedLeaves = leavesData.map(leave => {
         const employee = empRes.data?.find(e => e.id === leave.employee_id);
         const profile = employee ? profRes.data?.find(p => p.id === employee.user_id) : null;
         
@@ -60,7 +78,7 @@ export default function CalendarPage() {
       
       setLeaveRequests(joinedLeaves);
     }
-  }, [currentDate]);
+  }, [currentDate, role, user?.id]);
 
   useEffect(() => {
     fetchData();
@@ -114,6 +132,10 @@ export default function CalendarPage() {
 
   async function createTaskForDay(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("calendar", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to create tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("tasks").insert([{
       title: newTask.title,
       description: newTask.description || null,
@@ -131,6 +153,10 @@ export default function CalendarPage() {
 
   async function rescheduleTask() {
     if (!rescheduleTaskId || !rescheduleDate) return;
+    if (!can("calendar", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to reschedule tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("tasks").update({ due_date: rescheduleDate }).eq("id", rescheduleTaskId);
     if (!error) {
       setRescheduleTaskId(null);
@@ -234,8 +260,12 @@ export default function CalendarPage() {
                 {tasks.filter((t) => t.due_date?.startsWith(selectedDate)).map((task) => (
                   <div key={task.id} className="flex items-center gap-2">
                     <span className="text-sm flex-1 truncate">{task.title}</span>
-                    <Input type="date" className="h-8 w-40" value={rescheduleTaskId === task.id ? rescheduleDate : selectedDate} onChange={(e) => { setRescheduleTaskId(task.id); setRescheduleDate(e.target.value); }} />
-                    <Button size="sm" variant="outline" onClick={rescheduleTask}>Reschedule</Button>
+                    {can("calendar", "can_edit") && (
+                      <>
+                        <Input type="date" className="h-8 w-40" value={rescheduleTaskId === task.id ? rescheduleDate : selectedDate} onChange={(e) => { setRescheduleTaskId(task.id); setRescheduleDate(e.target.value); }} />
+                        <Button size="sm" variant="outline" onClick={rescheduleTask}>Reschedule</Button>
+                      </>
+                    )}
                   </div>
                 ))}
                 {tasks.filter((t) => t.due_date?.startsWith(selectedDate)).length === 0 && (
@@ -245,29 +275,33 @@ export default function CalendarPage() {
             </div>
             <div>
               <h3 className="font-medium text-sm">Create Task</h3>
-              <form onSubmit={createTaskForDay} className="space-y-2 mt-2">
-                <div>
-                  <Label>Title</Label>
-                  <Input value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} required />
-                </div>
-                <div>
-                  <Label>Description</Label>
-                  <Textarea value={newTask.description} onChange={(e) => setNewTask({ ...newTask, description: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Priority</Label>
-                  <Select value={newTask.priority} onValueChange={(v) => setNewTask({ ...newTask, priority: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button type="submit" className="w-full">Create Task on {selectedDate}</Button>
-              </form>
+              {can("calendar", "can_create") ? (
+                <form onSubmit={createTaskForDay} className="space-y-2 mt-2">
+                  <div>
+                    <Label>Title</Label>
+                    <Input value={newTask.title} onChange={(e) => setNewTask({ ...newTask, title: e.target.value })} required />
+                  </div>
+                  <div>
+                    <Label>Description</Label>
+                    <Textarea value={newTask.description} onChange={(e) => setNewTask({ ...newTask, description: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Priority</Label>
+                    <Select value={newTask.priority} onValueChange={(v) => setNewTask({ ...newTask, priority: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="submit" className="w-full">Create Task on {selectedDate}</Button>
+                </form>
+              ) : (
+                <p className="text-sm text-muted-foreground mt-2">You do not have permission to create tasks.</p>
+              )}
             </div>
             <div>
               <h3 className="font-medium text-sm">Leave</h3>

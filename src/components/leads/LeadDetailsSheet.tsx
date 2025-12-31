@@ -13,9 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { Tables, TablesInsert } from "@/integrations/supabase/types";
+import { LeadWithDetails } from "@/types/app";
 
 interface LeadDetailsSheetProps {
-  lead: Tables<'leads'> | null;
+  lead: LeadWithDetails | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }

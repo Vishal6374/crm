@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Search, Activity, User, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const actionColors: Record<string, string> = {
   create: "bg-success/10 text-success",
@@ -15,20 +17,22 @@ const actionColors: Record<string, string> = {
 };
 
 export default function ActivityLogsPage() {
+  const { user } = useAuth();
+  const { can, role } = usePermissions();
   const [logs, setLogs] = useState<(Database["public"]["Tables"]["activity_logs"]["Row"] & { profiles?: { full_name: string | null; email: string | null } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    fetchLogs();
-  }, []);
-
-  async function fetchLogs() {
-    const { data: logsData, error } = await supabase
+  const fetchLogs = useCallback(async () => {
+    let builder = supabase
       .from("activity_logs")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
+    if (role === "employee" && user?.id) {
+      builder = builder.eq("user_id", user.id);
+    }
+    const { data: logsData, error } = await builder;
     
     if (error) {
       console.error("Error fetching logs:", error);
@@ -44,7 +48,11 @@ export default function ActivityLogsPage() {
 
     setLogs(joinedLogs);
     setLoading(false);
-  }
+  }, [role, user?.id]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
 
   const filteredLogs = logs.filter((log) =>
     log.action.toLowerCase().includes(search.toLowerCase()) ||
@@ -58,6 +66,10 @@ export default function ActivityLogsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!can("activity_logs", "can_view") ? (
+        <div className="text-sm text-muted-foreground">You do not have permission to view activity logs.</div>
+      ) : (
+        <>
       <div>
         <h1 className="page-title">Activity Logs</h1>
         <p className="page-description">System audit trail</p>
@@ -123,6 +135,8 @@ export default function ActivityLogsPage() {
           </table>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

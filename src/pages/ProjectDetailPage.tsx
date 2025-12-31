@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,18 +14,20 @@ import type { Tables } from "@/integrations/supabase/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type Project = Tables<"projects">;
 type Employee = Tables<"employees"> & { profiles: Pick<Tables<"profiles">, "id" | "full_name" | "email"> | null };
 type Member = Tables<"project_members"> & { employees: Employee | null };
-type Task = Tables<"tasks">;
-type Event = Tables<"events">;
+type Task = Tables<"project_tasks">;
+type Event = Tables<"project_meetings">;
 type Channel = Tables<"chat_channels">;
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { can, role } = usePermissions();
   const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -39,54 +41,7 @@ export default function ProjectDetailPage() {
 
   const filteredTasks = useMemo(() => tasks.filter((t) => t.title.toLowerCase().includes(search.toLowerCase())), [tasks, search]);
 
-  useEffect(() => {
-    if (!id) return;
-    fetchAll();
-  }, [id]);
-
-  async function fetchAll() {
-    setLoading(true);
-    const [projRes, memRes, empRes, taskRes, evtRes, chanRes] = await Promise.all([
-      supabase.from("projects").select("*").eq("id", id as string).maybeSingle(),
-      supabase.from("project_members").select("*, employees(*, profiles(id,full_name,email))").eq("project_id", id as string),
-      supabase.from("employees").select("*, profiles(id,full_name,email)").order("created_at", { ascending: false }),
-      supabase.from("tasks").select("*").eq("project_id", id as string).order("created_at", { ascending: false }),
-      supabase.from("events").select("*").eq("type", "meeting").eq("related_id", id as string).order("start_time", { ascending: true }),
-      supabase.from("chat_channels").select("*").eq("project_id", id as string).maybeSingle(),
-    ]);
-    setProject(projRes.data || null);
-    setMembers((memRes.data || []) as Member[]);
-    setEmployees((empRes.data || []) as Employee[]);
-    setTasks((taskRes.data || []) as Task[]);
-    setEvents((evtRes.data || []) as Event[]);
-    setChannel(chanRes.data || null);
-    setLoading(false);
-    if (chanRes.data) {
-      await syncChannelParticipants(chanRes.data);
-    }
-  }
-
-  async function ensureChannel() {
-    if (!id) return;
-    if (channel?.id) return;
-    const { data, error } = await supabase.from("chat_channels").insert([{
-      type: "group",
-      name: project?.name ? `Project: ${project.name}` : "Project Channel",
-      created_by: (await supabase.auth.getUser()).data.user?.id || "",
-      project_id: id,
-    }]).select("*").maybeSingle();
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      setChannel(data || null);
-      toast({ title: "Chat channel created" });
-      if (data) {
-        await syncChannelParticipants(data);
-      }
-    }
-  }
-
-  async function syncChannelParticipants(ch: Channel) {
+  const syncChannelParticipants = useCallback(async (ch: Channel, currentMembers: Member[]) => {
     const { data: existingRows } = await supabase
       .from("chat_participants")
       .select("user_id")
@@ -94,7 +49,7 @@ export default function ProjectDetailPage() {
     const existing = new Set((existingRows || []).map((r) => (r as { user_id: string }).user_id));
     const userIds: string[] = [];
     if (user?.id) userIds.push(user.id);
-    members.forEach((m) => {
+    currentMembers.forEach((m) => {
       const uid = m.employees?.profiles?.id;
       if (uid) userIds.push(uid);
     });
@@ -105,8 +60,60 @@ export default function ProjectDetailPage() {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       }
     }
+  }, [user?.id, toast]);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    const [projRes, memRes, empRes, taskRes, evtRes, chanRes] = await Promise.all([
+      supabase.from("projects").select("*").eq("id", id as string).maybeSingle(),
+      supabase.from("project_members").select("*, employees(*, profiles(id,full_name,email))").eq("project_id", id as string),
+      supabase.from("employees").select("*, profiles(id,full_name,email)").order("created_at", { ascending: false }),
+      supabase.from("project_tasks").select("*").eq("project_id", id as string).order("created_at", { ascending: false }),
+      supabase.from("project_meetings").select("*").eq("project_id", id as string).order("start_time", { ascending: true }),
+      supabase.from("chat_channels").select("*").eq("project_id", id as string).maybeSingle(),
+    ]);
+    setProject(projRes.data || null);
+    const membersList = (memRes.data || []) as Member[];
+    setMembers(membersList);
+    setEmployees((empRes.data || []) as Employee[]);
+    setTasks((taskRes.data || []) as Task[]);
+    setEvents((evtRes.data || []) as Event[]);
+    setChannel(chanRes.data || null);
+    setLoading(false);
+    if (chanRes.data) {
+      await syncChannelParticipants(chanRes.data, membersList);
+    }
+  }, [id, syncChannelParticipants]);
+
+  async function ensureChannel() {
+    if (!id) return;
+    if (channel?.id) return;
+    const { data: existing } = await supabase.from("chat_channels").select("*").eq("project_id", id as string).maybeSingle();
+    if (existing) {
+      setChannel(existing);
+      await syncChannelParticipants(existing, members);
+      return;
+    }
+    const name = project?.name ? `Project: ${project.name}` : "Project Chat";
+    const { data: created, error } = await supabase
+      .from("chat_channels")
+      .insert([{ project_id: id as string, name, type: "group", created_by: user?.id || "" }])
+      .select()
+      .maybeSingle();
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    if (created) {
+      setChannel(created);
+      await syncChannelParticipants(created, members);
+      toast({ title: "Project chat created" });
+    }
   }
 
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
   async function addMember(e: React.FormEvent) {
     e.preventDefault();
     if (!id || !newMemberEmployeeId) return;
@@ -135,7 +142,7 @@ export default function ProjectDetailPage() {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const formDataObj = Object.fromEntries(new FormData(form));
-    const { error } = await supabase.from("tasks").insert([{
+    const { error } = await supabase.from("project_tasks").insert([{
       title: String(formDataObj.title || ""),
       description: String(formDataObj.description || ""),
       priority: "medium",
@@ -153,14 +160,18 @@ export default function ProjectDetailPage() {
 
   async function scheduleMeeting(e: React.FormEvent) {
     e.preventDefault();
+    if (role !== "manager") {
+      toast({ title: "Not allowed", description: "You do not have permission to create project meetings.", variant: "destructive" });
+      return;
+    }
     const form = e.target as HTMLFormElement;
     const formDataObj = Object.fromEntries(new FormData(form));
-    const { error } = await supabase.from("events").insert([{
+    const { error } = await supabase.from("project_meetings").insert([{
       title: String(formDataObj.title || "Meeting"),
       start_time: String(formDataObj.start_time || ""),
       end_time: String(formDataObj.end_time || ""),
-      type: "meeting",
-      related_id: id as string,
+      meeting_link: String(formDataObj.meeting_link || ""),
+      project_id: id as string,
     }]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -279,14 +290,19 @@ export default function ProjectDetailPage() {
                 ))}
               </div>
               <div className="mt-4">
-                <form onSubmit={scheduleMeeting} className="space-y-2">
-                  <Input name="title" placeholder="Meeting title" required />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input type="datetime-local" name="start_time" required />
-                    <Input type="datetime-local" name="end_time" required />
-                  </div>
-                  <Button type="submit" className="w-full"><Plus className="h-4 w-4 mr-1" />Schedule Meeting</Button>
-                </form>
+                {role === "manager" ? (
+                  <form onSubmit={scheduleMeeting} className="space-y-2">
+                    <Input name="title" placeholder="Meeting title" required />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input type="datetime-local" name="start_time" required />
+                      <Input type="datetime-local" name="end_time" required />
+                    </div>
+                    <Input name="meeting_link" placeholder="Meeting link" required />
+                    <Button type="submit" className="w-full"><Plus className="h-4 w-4 mr-1" />Schedule Meeting</Button>
+                  </form>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Only project managers can schedule meetings.</p>
+                )}
               </div>
             </CardContent>
           </Card>

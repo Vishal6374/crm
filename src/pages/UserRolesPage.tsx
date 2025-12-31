@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface UserRoleWithProfile extends Tables<'user_roles'> {
   profiles: { full_name: string | null; email: string | null } | null;
@@ -29,18 +30,14 @@ const roleDescriptions: Record<string, string> = {
 
 export default function UserRolesPage() {
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [userRoles, setUserRoles] = useState<UserRoleWithProfile[]>([]);
   const [profiles, setProfiles] = useState<Pick<Tables<'profiles'>, "id" | "full_name" | "email">[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState({ user_id: "", role: "employee" });
 
-  useEffect(() => {
-    fetchUserRoles();
-    fetchProfiles();
-  }, []);
-
-  async function fetchUserRoles() {
+  const fetchUserRoles = useCallback(async () => {
     const { data: rolesData, error } = await supabase
       .from("user_roles")
       .select("*")
@@ -60,15 +57,24 @@ export default function UserRolesPage() {
 
     setUserRoles(joinedRoles);
     setLoading(false);
-  }
+  }, []);
 
-  async function fetchProfiles() {
+  const fetchProfiles = useCallback(async () => {
     const { data } = await supabase.from("profiles").select("id, full_name, email").order("full_name");
     if (data) setProfiles(data);
-  }
+  }, []);
+
+  useEffect(() => {
+    fetchUserRoles();
+    fetchProfiles();
+  }, [fetchUserRoles, fetchProfiles]);
 
   async function createUserRole(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("user_roles", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to assign roles.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("user_roles").insert([{
       user_id: formData.user_id,
       role: formData.role as "admin" | "manager" | "employee",
@@ -84,6 +90,10 @@ export default function UserRolesPage() {
   }
 
   async function deleteUserRole(id: string) {
+    if (!can("user_roles", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to remove roles.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("user_roles").delete().eq("id", id);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -101,15 +111,21 @@ export default function UserRolesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!can("user_roles", "can_view") ? (
+        <div className="text-sm text-muted-foreground">You do not have permission to view user roles.</div>
+      ) : (
+        <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">User Roles</h1>
           <p className="page-description">Manage access control</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />Assign Role</Button>
-          </DialogTrigger>
+          {can("user_roles", "can_create") && (
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" />Assign Role</Button>
+            </DialogTrigger>
+          )}
           <DialogContent>
             <DialogHeader><DialogTitle>Assign User Role</DialogTitle></DialogHeader>
             <form onSubmit={createUserRole} className="space-y-4">
@@ -179,9 +195,11 @@ export default function UserRolesPage() {
                     <td><Badge className={roleColors[ur.role]}>{ur.role}</Badge></td>
                     <td className="text-muted-foreground">{roleDescriptions[ur.role]}</td>
                     <td>
-                      <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteUserRole(ur.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {can("user_roles", "can_edit") && (
+                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteUserRole(ur.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -190,6 +208,8 @@ export default function UserRolesPage() {
           </table>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

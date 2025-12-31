@@ -4,12 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Mail, Phone, Building2, MapPin, Calendar, User, Briefcase, Shield } from "lucide-react";
 import { Tables } from "@/integrations/supabase/types";
-
-export interface EmployeeWithDetails extends Tables<'employees'> {
-  departments?: { name: string } | null;
-  designations?: { title: string } | null;
-  profiles?: { full_name: string | null; email: string | null } | null;
-}
+import { EmployeeWithDetails } from "@/types/app";
 
 interface EmployeeDetailsSheetProps {
   employee: EmployeeWithDetails | null;

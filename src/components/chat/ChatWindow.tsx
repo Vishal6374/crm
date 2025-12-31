@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tables } from "@/integrations/supabase/types";
 import { usePermissions } from "@/hooks/use-permissions";
+import { Badge } from "@/components/ui/badge";
 
 interface ChatWindowProps {
   channelId: string;
@@ -38,12 +39,13 @@ type ParticipantWithProfile = {
 export function ChatWindow({ channelId }: ChatWindowProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const [messages, setMessages] = useState<MessageWithProfile[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [channel, setChannel] = useState<ChannelWithName | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [participants, setParticipants] = useState<ParticipantWithProfile[]>([]);
+  const [rolesMap, setRolesMap] = useState<Record<string, string>>({});
   
   // Add member state
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
@@ -91,6 +93,27 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
     setParticipants(data || []);
   }, [channelId]);
 
+  const fetchParticipantRoles = useCallback(async () => {
+    if (!orgId) return;
+    const ids = participants.map(p => p.user_id);
+    if (ids.length === 0) {
+      setRolesMap({});
+      return;
+    }
+    const { data } = await supabase
+      .from('user_roles')
+      .select('user_id, role')
+      .eq('organization_id', orgId)
+      .in('user_id', ids);
+    const map: Record<string, string> = {};
+    (data || []).forEach((r) => {
+      const uid = (r as { user_id?: string }).user_id;
+      const role = (r as { role?: string }).role;
+      if (uid && role) map[uid] = role;
+    });
+    setRolesMap(map);
+  }, [orgId, participants]);
+
   const fetchNewMessage = useCallback(async (messageId: string) => {
     const { data, error } = await supabase
       .from('chat_messages')
@@ -120,6 +143,7 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
       fetchChannelDetails();
       fetchMessages();
       fetchParticipants();
+      fetchParticipantRoles();
 
       const channelSubscription = supabase
         .channel(`public:chat_messages:${channelId}`)
@@ -145,7 +169,7 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
         supabase.removeChannel(channelSubscription);
       };
     }
-  }, [channelId, fetchChannelDetails, fetchMessages, fetchParticipants, fetchNewMessage, toast]);
+  }, [channelId, fetchChannelDetails, fetchMessages, fetchParticipants, fetchParticipantRoles, fetchNewMessage, toast]);
 
   const fetchAvailableUsers = useCallback(async () => {
     if (!user) return;
@@ -165,7 +189,11 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
     if (isAddMemberOpen) {
       fetchAvailableUsers();
     }
-  }, [isAddMemberOpen, fetchAvailableUsers]);
+  }, [isAddMemberOpen, fetchAvailableUsers, fetchParticipants]);
+
+  useEffect(() => {
+    fetchParticipantRoles();
+  }, [participants, fetchParticipantRoles]);
 
   const addMember = useCallback(async (userId: string) => {
     const { error } = await supabase
@@ -297,7 +325,16 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
                 ) : !isMe && <div className="w-8" />}
                 
                 <div className={`max-w-[70%] ${isMe ? 'bg-primary text-primary-foreground' : 'bg-muted'} p-3 rounded-lg`}>
-                  {!isMe && showAvatar && <p className="text-xs font-semibold mb-1">{msg.profiles?.full_name}</p>}
+                  {!isMe && showAvatar && (
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-xs font-semibold">{msg.profiles?.full_name}</p>
+                      {rolesMap[msg.sender_id] && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                          {rolesMap[msg.sender_id]}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                   <p className={`text-[10px] mt-1 ${isMe ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                     {format(new Date(msg.created_at), 'h:mm a')}

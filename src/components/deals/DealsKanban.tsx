@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Pencil, Trash2, CheckCircle, XCircle, MoveHorizontal, MessageSquare, IndianRupee, User } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { Tables } from "@/integrations/supabase/types";
+import { DealWithDetails } from "@/types/app";
 
 interface DealStage {
   value: string;
   label: string;
-  deals: Tables<'deals'>[];
+  deals: DealWithDetails[];
   total: number;
 }
 
@@ -18,11 +19,11 @@ interface DealsKanbanProps {
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent, stage: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
-  onUpdateStage: (deal: Tables<'deals'>, stage: string) => void;
+  onUpdateStage: (deal: DealWithDetails, stage: string) => void;
   onDelete: (id: string) => void;
   onComments: (id: string) => void;
   onAssign?: (dealId: string, userId: string) => void;
-  onView: (deal: Tables<'deals'>) => void;
+  onView: (deal: DealWithDetails) => void;
 }
 
 export function DealsKanban({ stages, employees = [], onDragOver, onDrop, onDragStart, onUpdateStage, onDelete, onComments, onAssign, onView }: DealsKanbanProps) {
@@ -49,7 +50,7 @@ export function DealsKanban({ stages, employees = [], onDragOver, onDrop, onDrag
               {stage.deals.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-4">No deals</p>
               ) : (
-                stage.deals.map((deal: Tables<'deals'>) => (
+                stage.deals.map((deal) => (
                   <Card 
                     key={deal.id} 
                     className="bg-card shadow-sm cursor-pointer hover:shadow-md transition-shadow group" 

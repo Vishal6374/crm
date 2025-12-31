@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function DepartmentsPage() {
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [departments, setDepartments] = useState<(Tables<'departments'> & { employees: { count: number }[] })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -35,6 +37,10 @@ export default function DepartmentsPage() {
 
   async function createDepartment(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("departments", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to create departments.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("departments").insert([formData] as Database['public']['Tables']['departments']['Insert'][]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -50,6 +56,10 @@ export default function DepartmentsPage() {
   async function updateDepartment(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId) return;
+    if (!can("departments", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to edit departments.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("departments").update(formData).eq("id", editingId);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -63,6 +73,10 @@ export default function DepartmentsPage() {
   }
 
   async function deleteDepartment(id: string) {
+    if (!can("departments", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to delete departments.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("departments").delete().eq("id", id);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -94,15 +108,17 @@ export default function DepartmentsPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button
-              onClick={() => {
-                setEditingId(null);
-                setFormData({ name: "", description: "" });
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Department
-            </Button>
+            {can("departments", "can_create") && (
+              <Button
+                onClick={() => {
+                  setEditingId(null);
+                  setFormData({ name: "", description: "" });
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Department
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -143,20 +159,24 @@ export default function DepartmentsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setEditingId(dept.id);
-                        setFormData({ name: dept.name || "", description: dept.description || "" });
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteDepartment(dept.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {can("departments", "can_edit") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingId(dept.id);
+                          setFormData({ name: dept.name || "", description: dept.description || "" });
+                          setDialogOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {can("departments", "can_edit") && (
+                      <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteDepartment(dept.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>

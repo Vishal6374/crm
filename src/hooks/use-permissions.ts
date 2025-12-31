@@ -14,7 +14,7 @@ type CapabilityMap = Record<
 
 export function usePermissions() {
   const { user } = useAuth();
-  const [role, setRole] = useState<"admin" | "manager" | "employee" | null>(null);
+  const [role, setRole] = useState<"admin" | "manager" | "employee" | "viewer" | "hr" | "finance" | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [caps, setCaps] = useState<CapabilityMap>({});
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ export function usePermissions() {
       : null;
     setOrgId(organization_id);
 
-    let userRole: "admin" | "manager" | "employee" | null = null;
+    let userRole: "admin" | "manager" | "employee" | "viewer" | "hr" | "finance" | null = null;
     if (organization_id) {
       const { data: roles } = await supabase
         .from("user_roles")
@@ -37,8 +37,12 @@ export function usePermissions() {
         .eq("organization_id", organization_id)
         .limit(1);
       const roleRow = Array.isArray(roles) ? roles[0] as { role?: string } : undefined;
-      userRole = roleRow && (roleRow.role === "admin" || roleRow.role === "manager" || roleRow.role === "employee")
-        ? (roleRow.role as "admin" | "manager" | "employee")
+      const r = roleRow?.role;
+      userRole =
+        r === "tenant_admin"
+          ? "admin"
+          : r === "admin" || r === "manager" || r === "employee" || r === "viewer" || r === "hr" || r === "finance"
+          ? (r as "admin" | "manager" | "employee" | "viewer" | "hr" | "finance")
         : null;
       setRole(userRole);
     }
@@ -48,7 +52,7 @@ export function usePermissions() {
         .from("role_capabilities")
         .select("module, can_view, can_create, can_edit, can_approve")
         .eq("organization_id", organization_id)
-        .eq("role", userRole);
+        .eq("role", userRole === "admin" ? "admin" : userRole);
       const map: CapabilityMap = {};
       const rows = Array.isArray(rc) ? rc as Array<{ module?: string; can_view?: boolean; can_create?: boolean; can_edit?: boolean; can_approve?: boolean }> : [];
       for (const r of rows) {

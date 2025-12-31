@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   Target,
   Briefcase,
@@ -70,6 +71,7 @@ function StatCard({ title, value, change, trend, icon }: StatCardProps) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { role, can } = usePermissions();
   const [stats, setStats] = useState({
     leads: 0,
     deals: 0,
@@ -89,13 +91,39 @@ export default function DashboardPage() {
         const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
         const sixMonthsAgo = subMonths(today, 6);
 
+        const canViewLeads = can("leads", "can_view");
+        const canViewDeals = can("deals", "can_view");
+        const canViewEmployees = can("employees", "can_view");
+        const canViewTasks = can("tasks", "can_view");
+        const canViewReports = can("reports", "can_view");
+
         const [leadsRes, dealsRes, employeesRes, tasksRes, revenueDealsRes, weekTasksRes] = await Promise.all([
-          supabase.from("leads").select("id", { count: "exact", head: true }),
-          supabase.from("deals").select("id, stage, value", { count: "exact" }),
-          supabase.from("employees").select("id", { count: "exact", head: true }),
-          supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
-          supabase.from("deals").select("value, created_at").eq("stage", "closed_won").gte("created_at", sixMonthsAgo.toISOString()),
-          supabase.from("tasks").select("status, due_date").gte("due_date", startOfCurrentWeek.toISOString()).lte("due_date", endOfCurrentWeek.toISOString())
+          canViewLeads
+            ? supabase.from("leads").select("id", { count: "exact", head: true })
+            : Promise.resolve({ count: 0 } as { count: number }),
+          canViewDeals
+            ? supabase.from("deals").select("id, stage, value", { count: "exact" })
+            : Promise.resolve({ count: 0, data: [] } as { count: number; data: Tables<"deals">[] }),
+          canViewEmployees
+            ? supabase.from("employees").select("id", { count: "exact", head: true })
+            : Promise.resolve({ count: 0 } as { count: number }),
+          canViewTasks
+            ? supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed")
+            : Promise.resolve({ count: 0 } as { count: number }),
+          canViewReports
+            ? supabase
+                .from("deals")
+                .select("value, created_at")
+                .eq("stage", "closed_won")
+                .gte("created_at", sixMonthsAgo.toISOString())
+            : Promise.resolve({ data: [] } as { data: Pick<Tables<"deals">, "value" | "created_at">[] }),
+          canViewTasks
+            ? supabase
+                .from("tasks")
+                .select("status, due_date")
+                .gte("due_date", startOfCurrentWeek.toISOString())
+                .lte("due_date", endOfCurrentWeek.toISOString())
+            : Promise.resolve({ data: [] } as { data: Pick<Tables<"tasks">, "status" | "due_date">[] })
         ]);
 
         setStats({
@@ -173,7 +201,7 @@ export default function DashboardPage() {
     }
 
     fetchStats();
-  }, []);
+  }, [can]);
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -184,6 +212,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
+      {role === "employee" && (
+        <div className="page-header">
+          <h1 className="page-title">Access Restricted</h1>
+          <p className="page-description">Your role does not have access to the dashboard.</p>
+        </div>
+      )}
+      {role !== "employee" && (
+      <>
       {/* Header */}
       <div className="page-header">
         <h1 className="page-title">{greeting()}, {user?.email?.split("@")[0]}!</h1>
@@ -192,39 +228,48 @@ export default function DashboardPage() {
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Leads"
-          value={stats.leads}
-          change="+12% from last month"
-          trend="up"
-          icon={<Target className="h-6 w-6 text-primary" />}
-        />
-        <StatCard
-          title="Active Deals"
-          value={stats.deals}
-          change="+8% from last month"
-          trend="up"
-          icon={<Briefcase className="h-6 w-6 text-primary" />}
-        />
-        <StatCard
-          title="Employees"
-          value={stats.employees}
-          change="No change"
-          trend="neutral"
-          icon={<Users className="h-6 w-6 text-primary" />}
-        />
-        <StatCard
-          title="Open Tasks"
-          value={stats.tasks}
-          change="-5% from last week"
-          trend="down"
-          icon={<ClipboardList className="h-6 w-6 text-primary" />}
-        />
+        {can("leads", "can_view") && (
+          <StatCard
+            title="Total Leads"
+            value={stats.leads}
+            change="+12% from last month"
+            trend="up"
+            icon={<Target className="h-6 w-6 text-primary" />}
+          />
+        )}
+        {can("deals", "can_view") && (
+          <StatCard
+            title="Active Deals"
+            value={stats.deals}
+            change="+8% from last month"
+            trend="up"
+            icon={<Briefcase className="h-6 w-6 text-primary" />}
+          />
+        )}
+        {can("employees", "can_view") && (
+          <StatCard
+            title="Employees"
+            value={stats.employees}
+            change="No change"
+            trend="neutral"
+            icon={<Users className="h-6 w-6 text-primary" />}
+          />
+        )}
+        {can("tasks", "can_view") && (
+          <StatCard
+            title="Open Tasks"
+            value={stats.tasks}
+            change="-5% from last week"
+            trend="down"
+            icon={<ClipboardList className="h-6 w-6 text-primary" />}
+          />
+        )}
       </div>
 
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Revenue Chart */}
+        {can("reports", "can_view") && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Revenue Overview</CardTitle>
@@ -260,8 +305,10 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {/* Deal Pipeline */}
+        {can("deals", "can_view") && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Deal Pipeline</CardTitle>
@@ -311,9 +358,11 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* Tasks Chart */}
+      {can("tasks", "can_view") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Weekly Task Overview</CardTitle>
@@ -344,6 +393,7 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Quick Actions */}
       <Card>
@@ -352,29 +402,39 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Button asChild className="justify-start">
-              <Link to="/leads">
-                <Plus className="mr-2 h-4 w-4" /> New Lead
-              </Link>
-            </Button>
-            <Button asChild variant="secondary" className="justify-start">
-              <Link to="/deals">
-                <Plus className="mr-2 h-4 w-4" /> New Deal
-              </Link>
-            </Button>
-            <Button asChild variant="secondary" className="justify-start">
-              <Link to="/tasks">
-                <Plus className="mr-2 h-4 w-4" /> New Task
-              </Link>
-            </Button>
-            <Button asChild variant="secondary" className="justify-start">
-              <Link to="/contacts">
-                <Plus className="mr-2 h-4 w-4" /> New Contact
-              </Link>
-            </Button>
+            {can("leads", "can_create") && (
+              <Button asChild className="justify-start">
+                <Link to="/leads">
+                  <Plus className="mr-2 h-4 w-4" /> New Lead
+                </Link>
+              </Button>
+            )}
+            {can("deals", "can_create") && (
+              <Button asChild variant="secondary" className="justify-start">
+                <Link to="/deals">
+                  <Plus className="mr-2 h-4 w-4" /> New Deal
+                </Link>
+              </Button>
+            )}
+            {can("tasks", "can_create") && (
+              <Button asChild variant="secondary" className="justify-start">
+                <Link to="/tasks">
+                  <Plus className="mr-2 h-4 w-4" /> New Task
+                </Link>
+              </Button>
+            )}
+            {can("contacts", "can_create") && (
+              <Button asChild variant="secondary" className="justify-start">
+                <Link to="/contacts">
+                  <Plus className="mr-2 h-4 w-4" /> New Contact
+                </Link>
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

@@ -15,10 +15,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { Database } from "@/integrations/supabase/types";
 
 import { ContactDetailsSheet } from "@/components/contacts/ContactDetailsSheet";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function ContactsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [contacts, setContacts] = useState<(Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } })[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,17 @@ export default function ContactsPage() {
   async function createContact(e: React.FormEvent) {
     e.preventDefault();
     if (editingContact) {
+      if (!can("contacts", "can_edit")) {
+        toast({ title: "Not allowed", description: "You do not have permission to edit contacts.", variant: "destructive" });
+        return;
+      }
+    } else {
+      if (!can("contacts", "can_create")) {
+        toast({ title: "Not allowed", description: "You do not have permission to create contacts.", variant: "destructive" });
+        return;
+      }
+    }
+    if (editingContact) {
       const { error } = await supabase.from("contacts").update({
         first_name: formData.first_name,
         last_name: formData.last_name,
@@ -100,6 +113,10 @@ export default function ContactsPage() {
   }
 
   function openEdit(contact: Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } }) {
+    if (!can("contacts", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to edit contacts.", variant: "destructive" });
+      return;
+    }
     setEditingContact(contact);
     setFormData({
       first_name: contact.first_name || "",
@@ -114,6 +131,10 @@ export default function ContactsPage() {
   }
 
   async function deleteContact(id: string) {
+    if (!can("contacts", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to delete contacts.", variant: "destructive" });
+      return;
+    }
     if (!confirm("Delete this contact?")) return;
     const { error } = await supabase.from("contacts").delete().eq("id", id);
     if (error) {
@@ -167,38 +188,40 @@ export default function ContactsPage() {
           <h1 className="page-title">Contacts</h1>
           <p className="page-description">Manage your business contacts</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />New Contact</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create New Contact</DialogTitle></DialogHeader>
-            <form onSubmit={createContact} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div><Label>First Name</Label><Input value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} required /></div>
-                <div><Label>Last Name</Label><Input value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><Label>Email</Label><Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /></div>
-                <div><Label>Phone</Label><Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><Label>Position</Label><Input value={formData.position} onChange={(e) => setFormData({ ...formData, position: e.target.value })} /></div>
-                <div>
-                  <Label>Company</Label>
-                  <Select value={formData.company_id} onValueChange={(v) => setFormData({ ...formData, company_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select company" /></SelectTrigger>
-                    <SelectContent>
-                      {companies.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+        {can("contacts", "can_create") && (
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" />New Contact</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Create New Contact</DialogTitle></DialogHeader>
+              <form onSubmit={createContact} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>First Name</Label><Input value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} required /></div>
+                  <div><Label>Last Name</Label><Input value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} /></div>
                 </div>
-              </div>
-              <div><Label>Notes</Label><Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} /></div>
-              <Button type="submit" className="w-full">Create Contact</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Email</Label><Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /></div>
+                  <div><Label>Phone</Label><Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Position</Label><Input value={formData.position} onChange={(e) => setFormData({ ...formData, position: e.target.value })} /></div>
+                  <div>
+                    <Label>Company</Label>
+                    <Select value={formData.company_id} onValueChange={(v) => setFormData({ ...formData, company_id: v })}>
+                      <SelectTrigger><SelectValue placeholder="Select company" /></SelectTrigger>
+                      <SelectContent>
+                        {companies.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div><Label>Notes</Label><Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} /></div>
+                <Button type="submit" className="w-full">Create Contact</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="flex gap-4">
@@ -249,15 +272,21 @@ export default function ContactsPage() {
                       <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openEdit(contact)}>
-                        <Pencil className="mr-2 h-4 w-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => createDealForContact(contact)}>
-                        <Briefcase className="mr-2 h-4 w-4" /> Create Deal
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => deleteContact(contact.id)}>
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                      </DropdownMenuItem>
+                      {can("contacts", "can_edit") && (
+                        <DropdownMenuItem onClick={() => openEdit(contact)}>
+                          <Pencil className="mr-2 h-4 w-4" /> Edit
+                        </DropdownMenuItem>
+                      )}
+                      {can("deals", "can_create") && (
+                        <DropdownMenuItem onClick={() => openConvertDialog(contact)}>
+                          <Briefcase className="mr-2 h-4 w-4" /> Create Deal
+                        </DropdownMenuItem>
+                      )}
+                      {can("contacts", "can_edit") && (
+                        <DropdownMenuItem onClick={() => deleteContact(contact.id)}>
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

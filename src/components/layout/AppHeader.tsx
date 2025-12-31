@@ -15,11 +15,13 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+import { Tables } from "@/integrations/supabase/types";
+
 export function AppHeader() {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Array<{ id: string; title: string | null; body: string | null; read: boolean; created_at: string; entity_type: string | null; entity_id: string | null }>>([]);
+  const [notifications, setNotifications] = useState<Tables<'notifications'>[]>([]);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const userInitials = user?.email?.slice(0, 2).toUpperCase() || "U";
@@ -28,7 +30,7 @@ export function AppHeader() {
     if (!user?.id) return;
     const { data } = await supabase
       .from("notifications")
-      .select("id, title, body, read, created_at, entity_type, entity_id")
+      .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -41,17 +43,7 @@ export function AppHeader() {
     fetchNotifications();
   }
 
-  type NotificationItem = {
-    id: string;
-    title: string | null;
-    body: string | null;
-    read: boolean;
-    created_at: string;
-    entity_type: string | null;
-    entity_id: string | null;
-  };
-
-  const handleNotificationClick = async (n: NotificationItem) => {
+  const handleNotificationClick = async (n: Tables<'notifications'>) => {
     // Mark as read if not already
     if (!n.read) {
       await supabase.from("notifications").update({ read: true }).eq("id", n.id);

@@ -10,10 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ProjectsPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const { user } = useAuth();
   const [projects, setProjects] = useState<Tables<'projects'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -36,10 +40,29 @@ export default function ProjectsPage() {
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
-    const { error } = await supabase.from("projects").insert([{ name: formData.name, description: formData.description || null }]);
+    if (!can("projects", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to create projects.", variant: "destructive" });
+      return;
+    }
+    const { data: created, error } = await supabase.from("projects").insert([{
+      name: formData.name,
+      description: formData.description || null,
+      owner_id: user?.id || null
+    }]).select().maybeSingle();
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
+      if (created?.id && user?.id) {
+        const { data: emp } = await supabase
+          .from("employees")
+          .select("id, user_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const employeeId = emp?.id;
+        if (employeeId) {
+          await supabase.from("project_members").insert([{ project_id: created.id, employee_id: employeeId }]);
+        }
+      }
       toast({ title: "Project created successfully" });
       setDialogOpen(false);
       setFormData({ name: "", description: "" });
@@ -51,6 +74,10 @@ export default function ProjectsPage() {
   async function updateProject(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId) return;
+    if (!can("projects", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to edit projects.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("projects")
       .update({ name: formData.name, description: formData.description || null })
       .eq("id", editingId);
@@ -66,6 +93,10 @@ export default function ProjectsPage() {
   }
 
   async function deleteProject(id: string) {
+    if (!can("projects", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to delete projects.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("projects").delete().eq("id", id);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -81,6 +112,10 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!can("projects", "can_view") ? (
+        <div className="text-sm text-muted-foreground">You do not have permission to view projects.</div>
+      ) : (
+      <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Projects</h1>
@@ -97,7 +132,7 @@ export default function ProjectsPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button
+            {can("projects", "can_create") && <Button
               onClick={() => {
                 setEditingId(null);
                 setFormData({ name: "", description: "" });
@@ -105,7 +140,7 @@ export default function ProjectsPage() {
             >
               <Plus className="mr-2 h-4 w-4" />
               New Project
-            </Button>
+            </Button>}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -149,26 +184,30 @@ export default function ProjectsPage() {
                     {p.description && <p className="text-sm text-muted-foreground mt-1">{p.description}</p>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingId(p.id);
-                        setFormData({ name: p.name || "", description: p.description || "" });
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="text-destructive" 
-                      onClick={(e) => { e.stopPropagation(); deleteProject(p.id); }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {can("projects", "can_edit") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingId(p.id);
+                          setFormData({ name: p.name || "", description: p.description || "" });
+                          setDialogOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {can("projects", "can_edit") && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-destructive" 
+                        onClick={(e) => { e.stopPropagation(); deleteProject(p.id); }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -176,6 +215,8 @@ export default function ProjectsPage() {
           ))
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

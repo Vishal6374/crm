@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/contexts/AuthContext";
 
 type EmployeeSummary = {
   id: string;
@@ -56,7 +57,8 @@ const months = ["January", "February", "March", "April", "May", "June", "July", 
 
 export default function PayrollPage() {
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
+  const { user } = useAuth();
   const [payroll, setPayroll] = useState<(PayrollRow & { employees?: EmployeeSummary })[]>([]);
   const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,22 +82,27 @@ export default function PayrollPage() {
   useEffect(() => {
     fetchPayroll();
     fetchEmployees();
-  }, []);
+  }, [fetchPayroll, fetchEmployees]);
 
-  async function fetchPayroll() {
-    const { data: payrollData, error } = await supabase
+  const fetchPayroll = useCallback(async () => {
+    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id, salary");
+    const currentEmpId = (empsData || []).find((e) => (e as EmployeeRow).user_id === user?.id)?.id || null;
+    let builder = supabase
       .from("payroll")
       .select("*")
       .order("year", { ascending: false })
       .order("month", { ascending: false })
       .limit(100);
+    if (role === "employee" && currentEmpId) {
+      builder = builder.eq("employee_id", currentEmpId);
+    }
+    const { data: payrollData, error } = await builder;
     
     if (error) {
       console.error("Error fetching payroll:", error);
       return;
     }
 
-    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id, salary");
     const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
 
     const joinedPayroll = (payrollData || []).map((pay) => {
@@ -115,9 +122,9 @@ export default function PayrollPage() {
 
     setPayroll(joinedPayroll);
     setLoading(false);
-  }
+  }, [role, user?.id]);
 
-  async function fetchEmployees() {
+  const fetchEmployees = useCallback(async () => {
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id, salary")
@@ -140,10 +147,21 @@ export default function PayrollPage() {
     });
 
     setEmployees(joinedEmployees);
-  }
+  }, []);
 
   async function createPayroll(e: React.FormEvent) {
     e.preventDefault();
+    if (editing) {
+      if (!can("payroll", "can_edit")) {
+        toast({ title: "Not allowed", description: "You do not have permission to edit payroll.", variant: "destructive" });
+        return;
+      }
+    } else {
+      if (!can("payroll", "can_create")) {
+        toast({ title: "Not allowed", description: "You do not have permission to create payroll.", variant: "destructive" });
+        return;
+      }
+    }
     const basic = parseFloat(formData.basic_salary) || 0;
     const allowances = parseFloat(formData.allowances) || 0;
     const deductions = parseFloat(formData.deductions) || 0;
@@ -189,6 +207,10 @@ export default function PayrollPage() {
   }
 
   async function updatePayrollStatus(id: string, status: "pending" | "processed" | "paid") {
+    if (!can("payroll", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to update payroll.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase
       .from("payroll")
       .update({ status, paid_at: status === "paid" ? new Date().toISOString() : null })
@@ -197,6 +219,10 @@ export default function PayrollPage() {
   }
 
   async function bulkMarkPaid() {
+    if (!can("payroll", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to update payroll.", variant: "destructive" });
+      return;
+    }
     if (selected.size === 0) return;
     const ids = Array.from(selected);
     const { error } = await supabase
@@ -238,6 +264,10 @@ export default function PayrollPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+        {!can("payroll", "can_view") ? (
+          <div className="text-sm text-muted-foreground">You do not have permission to view payroll.</div>
+        ) : (
+        <>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="page-title">Payroll</h1>
@@ -250,9 +280,9 @@ export default function PayrollPage() {
                 <Button><Plus className="mr-2 h-4 w-4" />Create Payroll</Button>
               </DialogTrigger>
             )}
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create Payroll Record</DialogTitle></DialogHeader>
-            <form onSubmit={createPayroll} className="space-y-4">
+            <DialogContent>
+              <DialogHeader><DialogTitle>Create Payroll Record</DialogTitle></DialogHeader>
+              <form onSubmit={createPayroll} className="space-y-4">
               <div>
                 <Label>Employee</Label>
                 <Select value={formData.employee_id} onValueChange={(v) => {
@@ -314,6 +344,10 @@ export default function PayrollPage() {
                 </div>
                 <Button
                   onClick={async () => {
+                    if (!can("payroll", "can_edit")) {
+                      toast({ title: "Not allowed", description: "You do not have permission to generate payroll.", variant: "destructive" });
+                      return;
+                    }
                     const monthNum = parseInt(genMonth);
                     const yearNum = parseInt(genYear);
                     const start = new Date(yearNum, monthNum - 1, 1);
@@ -479,6 +513,8 @@ export default function PayrollPage() {
           </table>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const priorityColors: Record<string, string> = {
   low: "bg-muted text-muted-foreground",
@@ -36,6 +37,7 @@ type ProjectSummary = { id: string; name: string };
 export default function TasksPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { can, role } = usePermissions();
   const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
@@ -80,10 +82,14 @@ export default function TasksPage() {
   }, []);
 
   const fetchTasks = useCallback(async () => {
-    const { data, error } = await supabase
+    let builder = supabase
       .from("tasks")
       .select("*")
       .order("created_at", { ascending: false });
+    if (role === "employee") {
+      builder = builder.eq("assigned_to", user?.id || "");
+    }
+    const { data, error } = await builder;
     if (!error) setTasks(data || []);
     setLoading(false);
     if (data && data.length) {
@@ -91,7 +97,7 @@ export default function TasksPage() {
     } else {
       setTaskCollaborators({});
     }
-  }, [fetchTaskCollaborators]);
+  }, [fetchTaskCollaborators, role, user?.id]);
 
   const fetchProfiles = useCallback(async () => {
     const { data } = await supabase
@@ -137,6 +143,10 @@ export default function TasksPage() {
 
   async function createTask(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("tasks", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to create tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("tasks").insert([{
       title: formData.title,
       description: formData.description,
@@ -163,6 +173,10 @@ export default function TasksPage() {
   async function updateTask(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId) return;
+    if (!can("tasks", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to edit tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase
       .from("tasks")
       .update({
@@ -189,6 +203,10 @@ export default function TasksPage() {
   }
 
   async function toggleTaskStatus(task: Task) {
+    if (!can("tasks", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to update task status.", variant: "destructive" });
+      return;
+    }
     const newStatus = task.status === "completed" ? "todo" : "completed";
     const { error } = await supabase
       .from("tasks")
@@ -198,6 +216,10 @@ export default function TasksPage() {
   }
 
   async function assignTask(taskId: string, userId: string) {
+    if (!can("tasks", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to assign tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase
       .from("tasks")
       .update({ assigned_to: userId || null })
@@ -219,6 +241,10 @@ export default function TasksPage() {
   }
 
   async function startTask(task: Task) {
+    if (!can("tasks", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to start tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase
       .from("tasks")
       .update({ status: "in_progress" })
@@ -239,6 +265,10 @@ export default function TasksPage() {
   }
 
   async function completeTask(task: Task) {
+    if (!can("tasks", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to complete tasks.", variant: "destructive" });
+      return;
+    }
     const now = new Date();
     const { data: timing } = await supabase
       .from("task_timings")
@@ -392,6 +422,10 @@ export default function TasksPage() {
     urgent: "border-destructive",
   };
   async function moveTask(taskId: string, status: string) {
+    if (!can("tasks", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to move tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase
       .from("tasks")
       .update({ status, completed_at: status === "completed" ? new Date().toISOString() : null })
@@ -408,6 +442,10 @@ export default function TasksPage() {
     }
   }
   async function deleteTask(id: string) {
+    if (!can("tasks", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to delete tasks.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("tasks").delete().eq("id", id);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -426,6 +464,10 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!can("tasks", "can_view") ? (
+        <div className="text-sm text-muted-foreground">You do not have permission to view tasks.</div>
+      ) : (
+      <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Tasks</h1>
@@ -443,14 +485,16 @@ export default function TasksPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button
-              onClick={() => {
-                setEditingId(null);
-                setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "", project_id: null });
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />New Task
-            </Button>
+            {can("tasks", "can_create") && (
+              <Button
+                onClick={() => {
+                  setEditingId(null);
+                  setFormData({ title: "", description: "", priority: "medium", status: "todo", due_date: "", assigned_to: "", lead_id: "", deal_id: "", project_id: null });
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />New Task
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{editingId ? "Edit Task" : "Create New Task"}</DialogTitle></DialogHeader>
@@ -596,7 +640,7 @@ export default function TasksPage() {
                         <Card
                           key={task.id}
                           className={`bg-card shadow-sm cursor-move hover:shadow-md transition-shadow border ${borderClass} group`}
-                          draggable
+                          draggable={can("tasks", "can_edit")}
                           onDragStart={(e) => e.dataTransfer.setData("taskId", task.id as string)}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => {
@@ -607,7 +651,7 @@ export default function TasksPage() {
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <Checkbox checked={task.status === "completed"} onCheckedChange={() => toggleTaskStatus(task)} />
+                                <Checkbox checked={task.status === "completed"} disabled={!can("tasks", "can_edit")} onCheckedChange={() => toggleTaskStatus(task)} />
                                 <Badge className={priorityColors[task.priority]}>{task.priority}</Badge>
                               </div>
                             </div>
@@ -635,37 +679,41 @@ export default function TasksPage() {
                                 {(task.lead_id || task.deal_id) ? "Deal" : ""}
                               </div>
                               <div className="flex items-center gap-2 justify-end">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    setEditingId(task.id);
-                                    setFormData({
-                                      title: task.title || "",
-                                      description: task.description || "",
-                                      priority: task.priority || "medium",
-                                      status: task.status || "todo",
-                                      due_date: task.due_date?.split("T")[0] || "",
-                                      assigned_to: task.assigned_to || "",
-                                      lead_id: task.lead_id || "",
-                                      deal_id: task.deal_id || "",
-                                    });
-                                    setDialogOpen(true);
-                                  }}
-                                  title="Edit"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Select onValueChange={(v) => assignTask(task.id as string, v)}>
-                                  <SelectTrigger className="w-[36px] justify-center" title="Assign">
-                                    <UserPlus className="h-24 w-24" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {profiles.map((p) => (
-                                      <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                {can("tasks", "can_edit") && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setEditingId(task.id);
+                                      setFormData({
+                                        title: task.title || "",
+                                        description: task.description || "",
+                                        priority: task.priority || "medium",
+                                        status: task.status || "todo",
+                                        due_date: task.due_date?.split("T")[0] || "",
+                                        assigned_to: task.assigned_to || "",
+                                        lead_id: task.lead_id || "",
+                                        deal_id: task.deal_id || "",
+                                      });
+                                      setDialogOpen(true);
+                                    }}
+                                    title="Edit"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {can("tasks", "can_edit") && (
+                                  <Select onValueChange={(v) => assignTask(task.id as string, v)}>
+                                    <SelectTrigger className="w-[36px] justify-center" title="Assign">
+                                      <UserPlus className="h-24 w-24" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {profiles.map((p) => (
+                                        <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                )}
                                 {/* {task.status !== "in_progress" && task.status !== "completed" && (
                                   <Button variant="secondary" size="icon" onClick={() => startTask(task)} title="Start">
                                     <Play className="h-4 w-4" />
@@ -718,9 +766,11 @@ export default function TasksPage() {
                                     </div>
                                   </DialogContent>
                                 </Dialog> */}
-                                <Button variant="destructive" size="icon" onClick={() => deleteTask(task.id as string)} title="Delete">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                {can("tasks", "can_edit") && (
+                                  <Button variant="destructive" size="icon" onClick={() => deleteTask(task.id as string)} title="Delete">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </CardContent>
@@ -733,6 +783,8 @@ export default function TasksPage() {
             );
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   );

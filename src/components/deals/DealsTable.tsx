@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Pencil, Trash2, Eye, User } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { Tables } from "@/integrations/supabase/types";
+import { DealWithDetails } from "@/types/app";
 
 const stageColors: Record<string, string> = {
   prospecting: "bg-muted text-muted-foreground",
@@ -15,11 +16,11 @@ const stageColors: Record<string, string> = {
 };
 
 interface DealsTableProps {
-  deals: Tables<'deals'>[];
+  deals: DealWithDetails[];
   employees?: Tables<'profiles'>[];
-  onEdit: (deal: Tables<'deals'>) => void;
+  onEdit: (deal: DealWithDetails) => void;
   onDelete: (id: string) => void;
-  onView: (deal: Tables<'deals'>) => void;
+  onView: (deal: DealWithDetails) => void;
   onAssign?: (dealId: string, userId: string) => void;
 }
 

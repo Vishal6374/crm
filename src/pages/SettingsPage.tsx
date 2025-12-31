@@ -10,11 +10,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import { User, Lock, Bell, Palette } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
+  const { can } = usePermissions();
   const [profile, setProfile] = useState<{ full_name: string; avatar_url: string }>({ full_name: "", avatar_url: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,6 +69,10 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl">
+      {!can("settings", "can_view") ? (
+        <div className="text-sm text-muted-foreground">You do not have permission to view settings.</div>
+      ) : (
+        <>
       <div>
         <h1 className="page-title">Settings</h1>
         <p className="page-description">Manage your account and preferences</p>
@@ -180,6 +186,8 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

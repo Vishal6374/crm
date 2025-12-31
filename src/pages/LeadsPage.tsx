@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, LayoutList, LayoutGrid, Download, Upload, Trash2, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +20,7 @@ import * as XLSX from "xlsx";
 export default function LeadsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const [leads, setLeads] = useState<Tables<'leads'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
@@ -48,16 +48,37 @@ export default function LeadsPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
 
+  const fetchLeads = useCallback(async () => {
+    setLoading(true);
+    let query = supabase.from("leads").select("*").order("created_at", { ascending: false });
+    if (role === "manager" && user?.id) {
+      query = query.eq("user_id", user.id);
+    } else if (role === "employee" && user?.id) {
+      query = query.eq("assigned_to", user.id);
+    }
+    const { data: leadsData, error } = await query;
+    
+    if (error || !leadsData) {
+      setLeads([]);
+      setLoading(false);
+      return;
+    }
+
+    const { data: profiles } = await supabase.from("profiles").select("id, full_name");
+
+    const joinedLeads = leadsData.map(lead => ({
+      ...lead,
+      assigned_to_profile: profiles?.find(p => p.id === lead.assigned_to) || undefined
+    }));
+
+    setLeads(joinedLeads);
+    setLoading(false);
+  }, [role, user?.id]);
+
   useEffect(() => {
     fetchLeads();
-  }, []);
+  }, [fetchLeads]);
 
-  async function fetchLeads() {
-    setLoading(true);
-    const { data, error } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
-    if (!error) setLeads(data || []);
-    setLoading(false);
-  }
 
   const filteredLeads = leads.filter((lead) => {
     const matchesSearch = 

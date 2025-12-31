@@ -3,10 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Briefcase, IndianRupee, TrendingUp, CheckCircle, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(var(--destructive))", "hsl(var(--info))"];
 
 export default function ReportsPage() {
+  const { can } = usePermissions();
   const [stats, setStats] = useState({
     totalEmployees: 0,
     activeEmployees: 0,
@@ -86,6 +88,10 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!can("reports", "can_view") ? (
+        <div className="text-sm text-muted-foreground">You do not have permission to view reports.</div>
+      ) : (
+        <>
       <div>
         <h1 className="page-title">Reports</h1>
         <p className="page-description">Analytics and insights</p>
@@ -173,6 +179,8 @@ export default function ReportsPage() {
           </ResponsiveContainer>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

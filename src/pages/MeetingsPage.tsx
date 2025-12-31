@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,12 +8,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Meeting = Tables<"events">;
 type Project = Tables<"projects">;
 
 export default function MeetingsPage() {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const { can, role } = usePermissions();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,17 +27,33 @@ export default function MeetingsPage() {
   useEffect(() => {
     fetchMeetings();
     fetchProjects();
-  }, []);
+  }, [fetchMeetings]);
 
-  async function fetchMeetings() {
+  const fetchMeetings = useCallback(async () => {
     const { data, error } = await supabase
       .from("events")
       .select("*")
       .eq("type", "meeting")
       .order("start_time", { ascending: true });
-    if (!error) setMeetings(data || []);
+    if (error) {
+      setMeetings([]);
+      setLoading(false);
+      return;
+    }
+    let visible = (data || []) as Meeting[];
+    if (role === "employee" && user?.id) {
+      const { data: empRow } = await supabase.from("employees").select("id, user_id").eq("user_id", user.id).maybeSingle();
+      if (empRow?.id) {
+        const { data: mems } = await supabase.from("project_members").select("project_id, employee_id").eq("employee_id", empRow.id);
+        const allowedProjectIds = (mems || []).map((m) => (m as { project_id: string }).project_id);
+        visible = visible.filter((m) => !m.related_id || allowedProjectIds.includes(m.related_id as string));
+      } else {
+        visible = visible.filter((m) => !m.related_id);
+      }
+    }
+    setMeetings(visible);
     setLoading(false);
-  }
+  }, [role, user?.id]);
 
   async function fetchProjects() {
     const { data } = await supabase.from("projects").select("id, name").order("name");
@@ -42,6 +62,10 @@ export default function MeetingsPage() {
 
   async function createMeeting(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("calendar", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to create meetings.", variant: "destructive" });
+      return;
+    }
     const form = e.target as HTMLFormElement;
     const fd = new FormData(form);
     const { error } = await supabase.from("events").insert([{
@@ -70,29 +94,31 @@ export default function MeetingsPage() {
           <h1 className="page-title">Meetings</h1>
           <p className="page-description">Organization-wide meeting schedules</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" />New Meeting</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create Meeting</DialogTitle></DialogHeader>
-            <form onSubmit={createMeeting} className="space-y-3">
-              <div><Label>Title</Label><Input name="title" required /></div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><Label>Start</Label><Input type="datetime-local" name="start_time" required /></div>
-                <div><Label>End</Label><Input type="datetime-local" name="end_time" required /></div>
-              </div>
-              <div>
-                <Label>Project (optional)</Label>
-                <select name="project_id" className="w-full border rounded-md h-10 px-3">
-                  <option value="">None</option>
-                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              <Button type="submit" className="w-full">Create</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {can("calendar", "can_create") && (
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" />New Meeting</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Create Meeting</DialogTitle></DialogHeader>
+              <form onSubmit={createMeeting} className="space-y-3">
+                <div><Label>Title</Label><Input name="title" required /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><Label>Start</Label><Input type="datetime-local" name="start_time" required /></div>
+                  <div><Label>End</Label><Input type="datetime-local" name="end_time" required /></div>
+                </div>
+                <div>
+                  <Label>Project (optional)</Label>
+                  <select name="project_id" className="w-full border rounded-md h-10 px-3">
+                    <option value="">None</option>
+                    {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <Button type="submit" className="w-full">Create</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="flex gap-4">

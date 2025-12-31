@@ -83,8 +83,9 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
         byChannel.set(p.channel_id, arr);
       });
 
+      const nonProjectChannels = channelRowsTyped.filter((c) => !c.project_id);
       const enrichedChannels: ChannelWithParticipants[] = await Promise.all(
-        channelRowsTyped.map(async (channel) => {
+        nonProjectChannels.map(async (channel) => {
           const participants = byChannel.get(channel.id) || [];
           if (channel.type === 'direct') {
             const otherParticipant = participants.find((p) => p.user_id !== user.id);

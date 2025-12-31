@@ -140,6 +140,73 @@ export type Database = {
           organization_id?: string
         }
       }
+      project_tasks: {
+        Row: {
+          id: string
+          project_id: string
+          title: string
+          description: string | null
+          status: string
+          priority: string
+          assigned_to: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          title: string
+          description?: string | null
+          status?: string
+          priority?: string
+          assigned_to?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          title?: string
+          description?: string | null
+          status?: string
+          priority?: string
+          assigned_to?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+      }
+      project_meetings: {
+        Row: {
+          id: string
+          project_id: string
+          title: string
+          start_time: string
+          end_time: string
+          meeting_link: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          title: string
+          start_time: string
+          end_time: string
+          meeting_link?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          title?: string
+          start_time?: string
+          end_time?: string
+          meeting_link?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+      }
       leads: {
         Row: {
           id: string
@@ -410,6 +477,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
+          type: string | null
           title: string | null
           body: string | null
           read: boolean
@@ -423,6 +491,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
+          type?: string | null
           title?: string | null
           body?: string | null
           read?: boolean
@@ -436,6 +505,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
+          type?: string | null
           title?: string | null
           body?: string | null
           read?: boolean
@@ -445,6 +515,38 @@ export type Database = {
           meeting_id?: string | null
           created_at?: string
           organization_id?: string
+        }
+      }
+      events: {
+        Row: {
+          id: string
+          title: string
+          start_time: string
+          end_time: string
+          type: "task" | "meeting" | "leave"
+          related_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          start_time: string
+          end_time: string
+          type: "task" | "meeting" | "leave"
+          related_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          start_time?: string
+          end_time?: string
+          type?: "task" | "meeting" | "leave"
+          related_id?: string | null
+          created_at?: string
+          updated_at?: string
         }
       }
       chat_messages: {

@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmployeeDetailsSheet, EmployeeWithDetails } from "@/components/employees/EmployeeDetailsSheet";
 import { Tables } from "@/integrations/supabase/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const statusColors: Record<string, string> = {
   active: "bg-success/10 text-success",
@@ -21,6 +23,8 @@ const statusColors: Record<string, string> = {
 
 export default function EmployeesPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { can, role } = usePermissions();
   const [employees, setEmployees] = useState<EmployeeWithDetails[]>([]);
   const [departments, setDepartments] = useState<Tables<'departments'>[]>([]);
   const [designations, setDesignations] = useState<Tables<'designations'>[]>([]);
@@ -62,7 +66,8 @@ export default function EmployeesPage() {
       supabase.from("profiles").select("*")
     ]);
 
-    const joinedEmployees = employeesData.map(emp => ({
+    const filtered = role === "employee" ? employeesData.filter(emp => emp.user_id === user?.id) : employeesData;
+    const joinedEmployees = filtered.map(emp => ({
       ...emp,
       departments: deptRes.data?.find(d => d.id === emp.department_id) || null,
       designations: desigRes.data?.find(d => d.id === emp.designation_id) || null,
@@ -71,7 +76,7 @@ export default function EmployeesPage() {
 
     setEmployees(joinedEmployees);
     setLoading(false);
-  }, [toast]);
+  }, [toast, role, user?.id]);
 
   const fetchDepartments = useCallback(async () => {
     const { data } = await supabase.from("departments").select("id, name").order("name");
@@ -97,6 +102,10 @@ export default function EmployeesPage() {
 
   async function createEmployee(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("employees", "can_create")) {
+      toast({ title: "Not allowed", description: "You do not have permission to add employees.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("employees").insert([{
       employee_id: formData.employee_id,
       user_id: formData.user_id || null,
@@ -132,9 +141,11 @@ export default function EmployeesPage() {
           <p className="page-description">Manage your team members</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />Add Employee</Button>
-          </DialogTrigger>
+          {can("employees", "can_create") && (
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" />Add Employee</Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-lg">
             <DialogHeader><DialogTitle>Add New Employee</DialogTitle></DialogHeader>
             <form onSubmit={createEmployee} className="space-y-4">
