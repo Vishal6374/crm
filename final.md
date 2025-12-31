@@ -55,6 +55,7 @@
   - Command: npx supabase db push
   - Migrations include project visibility, project meetings schema, department auto chat.
 - Completed: Migrations pushed, including roles/modules constraints and seeding.
+- Completed: Fixed projects RLS recursion; simplified project_members SELECT policy [20251231140000_fix_projects_rls_recursion.sql](file:///c:/Users/Hi/crm/supabase/migrations/20251231140000_fix_projects_rls_recursion.sql)
 - Tighten frontend gating to match policies and spec.
   - Projects: gate New Project button to admin/manager in [ProjectsPage.tsx](file:///c:/Users/Hi/crm/src/pages/ProjectsPage.tsx).
   - Project meetings: gate schedule UI to project managers in [ProjectDetailPage.tsx](file:///c:/Users/Hi/crm/src/pages/ProjectDetailPage.tsx).
