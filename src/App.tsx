@@ -28,9 +28,11 @@ import ChatPage from "@/pages/ChatPage";
 import ProjectsPage from "@/pages/ProjectsPage";
 import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import MeetingsPage from "@/pages/MeetingsPage";
+import EmailsPage from "@/pages/EmailsPage";
+import SuperAdminPage from "@/pages/SuperAdminPage";
+import SetupSupabasePage from "@/pages/SetupSupabasePage";
 import NotFound from "@/pages/NotFound";
 import { ThemeProvider } from "./components/theme-provider";
-
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -43,6 +45,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<AuthPage />} />
+            <Route path="/setup" element={<SetupSupabasePage />} />
             <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
@@ -65,6 +68,8 @@ const App = () => (
               <Route path="designations" element={<DesignationsPage />} />
               <Route path="user-roles" element={<UserRolesPage />} />
               <Route path="activity-logs" element={<ActivityLogsPage />} />
+              <Route path="emails" element={<EmailsPage />} />
+              <Route path="super-admin" element={<SuperAdminPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />

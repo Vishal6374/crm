@@ -48,6 +48,22 @@ export default function LeadsPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
 
+
+  //   useEffect(() => {
+//     const debugOrg = async () => {
+//       const { data, error } = await supabase.rpc("current_org_id");
+
+//       console.log("current_org_id:", data);
+//       console.log("error:", error);
+//       const {
+//   data: { user },
+// } = await supabase.auth.getUser();
+
+// console.log(supabase.rpc("current_org_id"));
+//     };
+
+  //   debugOrg();
+  // }, []);
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     let query = supabase.from("leads").select("*").order("created_at", { ascending: false });

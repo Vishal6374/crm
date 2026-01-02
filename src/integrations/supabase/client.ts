@@ -2,13 +2,17 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const envUrl = import.meta.env.VITE_SUPABASE_URL;
+const envKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const overrideUrl = localStorage.getItem('SUPABASE_URL') || undefined;
+const overrideKey = localStorage.getItem('SUPABASE_KEY') || undefined;
+const SUPABASE_URL = overrideUrl || envUrl;
+const SUPABASE_PUBLISHABLE_KEY = overrideKey || envKey;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL as string, SUPABASE_PUBLISHABLE_KEY as string, {
   auth: {
     storage: localStorage,
     persistSession: true,

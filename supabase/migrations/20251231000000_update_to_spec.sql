@@ -26,13 +26,13 @@ BEGIN
 END $$;
 
 -- Enforce uniqueness for Tenant Admin per organization (treat legacy 'admin' as tenant admin equivalent)
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'one_tenant_admin_per_org') THEN
-    CREATE UNIQUE INDEX one_tenant_admin_per_org ON public.user_roles(organization_id)
-    WHERE role IN ('tenant_admin','admin');
-  END IF;
-END $$;
+-- DO $$
+-- BEGIN
+--   IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'one_tenant_admin_per_org') THEN
+--     CREATE UNIQUE INDEX one_tenant_admin_per_org ON public.user_roles(organization_id)
+--     WHERE role IN ('tenant_admin','admin');
+--   END IF;
+-- END $$;
 
 -- Tenant modules per organization
 CREATE TABLE IF NOT EXISTS public.tenant_modules (

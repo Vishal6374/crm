@@ -31,6 +31,8 @@ import {
   Activity,
   MessageSquare,
   Folder,
+  Mail,
+  ShieldAlert
 } from "lucide-react";
 
 const navigation = [
@@ -59,6 +61,7 @@ const adminNavigation = [
   { name: "Designations", href: "/designations", icon: FileText },
   { name: "User Roles", href: "/user-roles", icon: Shield },
   { name: "Activity Logs", href: "/activity-logs", icon: Activity },
+  { name: "Email Templates", href: "/emails", icon: Mail },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -120,6 +123,20 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">
         <div className="space-y-6">
+          {/* Super Admin Section */}
+          {role === "super_admin" && (
+            <div>
+              {!collapsed && (
+                <p className="px-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2">
+                  Platform
+                </p>
+              )}
+              <nav className="space-y-1">
+                <NavItem item={{ name: "Super Admin", href: "/super-admin", icon: ShieldAlert }} />
+              </nav>
+            </div>
+          )}
+
           {/* CRM Section */}
           <div>
             {!collapsed && (
@@ -201,6 +218,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                     Designations: "designations",
                     "User Roles": "user_roles",
                     "Activity Logs": "activity_logs",
+                    "Email Templates": "emails",
                     Settings: "settings",
                   };
                   const m = map[item.name] || "";

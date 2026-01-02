@@ -25,23 +25,23 @@ CREATE TABLE IF NOT EXISTS public.tenant_modules (
   UNIQUE (organization_id, module)
 );
 
-DO $$
-DECLARE
-  _org UUID;
-  m TEXT;
-BEGIN
-  SELECT id INTO _org FROM public.organizations ORDER BY created_at LIMIT 1;
-  FOR m IN SELECT unnest(ARRAY[
-    'dashboard','chat','leads','contacts','companies','deals','projects','tasks','calendar',
-    'employees','attendance','payroll','leave_requests','reports','departments','designations',
-    'user_roles','activity_logs','settings'
-  ])
-  LOOP
-    INSERT INTO public.tenant_modules(organization_id, module, enabled)
-    VALUES (_org, m, true)
-    ON CONFLICT (organization_id, module) DO NOTHING;
-  END LOOP;
-END $$;
+-- DO $$
+-- DECLARE
+--   _org UUID;
+--   m TEXT;
+-- BEGIN
+--   SELECT id INTO _org FROM public.organizations ORDER BY created_at LIMIT 1;
+--   FOR m IN SELECT unnest(ARRAY[
+--     'dashboard','chat','leads','contacts','companies','deals','projects','tasks','calendar',
+--     'employees','attendance','payroll','leave_requests','reports','departments','designations',
+--     'user_roles','activity_logs','settings'
+--   ])
+--   LOOP
+--     INSERT INTO public.tenant_modules(organization_id, module, enabled)
+--     VALUES (_org, m, true)
+--     ON CONFLICT (organization_id, module) DO NOTHING;
+--   END LOOP;
+-- END $$;
 
 CREATE OR REPLACE FUNCTION public.enforce_single_tenant_admin()
 RETURNS TRIGGER

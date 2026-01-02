@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Calendar, CheckCircle2, Circle, Pencil, User, Link, UserPlus, X, MessageSquare, Trash2, Play } from "lucide-react";
+import { Plus, Search, Calendar, CheckCircle2, Circle, Pencil, User, Link, UserPlus, X, MessageSquare, Trash2, Play, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { Tables } from "@/integrations/supabase/types";
 import { usePermissions } from "@/hooks/use-permissions";
+import { TaskDetailsSheet } from "@/components/tasks/TaskDetailsSheet";
 
 const priorityColors: Record<string, string> = {
   low: "bg-muted text-muted-foreground",
@@ -53,6 +54,7 @@ export default function TasksPage() {
   const [taskComments, setTaskComments] = useState<Record<string, Array<{ id: string; content: string; created_at: string; author_id: string }>>>({});
   const [commentText, setCommentText] = useState("");
   const [commentMention, setCommentMention] = useState<string>("");
+  const [viewTask, setViewTask] = useState<Task | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -612,180 +614,119 @@ export default function TasksPage() {
       {loading ? (
         <p className="text-muted-foreground text-center py-8">Loading...</p>
       ) : (
-        <div className="flex gap-4 overflow-x-auto">
-          {statusColumns.map((col) => {
-            const colTasks = filteredTasks.filter((t) => t.status === col.id);
-            return (
-              <div
-                key={col.id}
-                className="w-80 flex-shrink-0 rounded-lg border bg-muted/30"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  const taskId = e.dataTransfer.getData("taskId");
-                  if (taskId) moveTask(taskId, col.id);
-                }}
-              >
-                <div className="sticky top-0 z-10 p-3 border-b bg-card/80 backdrop-blur flex items-center justify-between">
-                  <span className="text-sm font-medium">{col.label}</span>
-                  <Badge variant="secondary">{colTasks.length}</Badge>
-                </div>
-                <div className="p-2 space-y-2">
-                  {colTasks.length === 0 ? (
-                    <p className="text-xs text-muted-foreground text-center py-4">No tasks</p>
-                  ) : (
-                    colTasks.map((task) => {
-                      const owner = profiles.find((p) => p.id === task.assigned_to);
-                      const borderClass = priorityBorder[task.priority] || "border-muted";
-                      return (
-                        <Card
-                          key={task.id}
-                          className={`bg-card shadow-sm cursor-move hover:shadow-md transition-shadow border ${borderClass} group`}
-                          draggable={can("tasks", "can_edit")}
-                          onDragStart={(e) => e.dataTransfer.setData("taskId", task.id as string)}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            const uid = e.dataTransfer.getData("userId");
-                            if (uid) assignTask(task.id as string, uid);
-                          }}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Checkbox checked={task.status === "completed"} disabled={!can("tasks", "can_edit")} onCheckedChange={() => toggleTaskStatus(task)} />
-                                <Badge className={priorityColors[task.priority]}>{task.priority}</Badge>
-                              </div>
+      <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)]">
+        {statusColumns.map((col) => {
+          const colTasks = filteredTasks.filter((t) => t.status === col.id);
+          return (
+            <div key={col.id} className="w-80 flex-shrink-0 rounded-lg border bg-muted/30 flex flex-col"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                const taskId = e.dataTransfer.getData("taskId");
+                if (taskId) moveTask(taskId, col.id);
+              }}
+            >
+              <div className="p-3 border-b bg-card/80 backdrop-blur flex items-center justify-between sticky top-0 z-10">
+                <span className="text-sm font-medium">{col.label}</span>
+                <Badge variant="secondary">{colTasks.length}</Badge>
+              </div>
+              <div className="p-2 space-y-2 flex-1 overflow-y-auto">
+                {colTasks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">No tasks</p>
+                ) : (
+                  colTasks.map((task) => {
+                    const assignedProfile = profiles.find(p => p.id === task.assigned_to);
+                    const borderClass = priorityBorder[task.priority || "medium"] || "border-l-4 border-l-info";
+                    
+                    return (
+                      <Card
+                        key={task.id}
+                        className={`bg-card shadow-sm cursor-move hover:shadow-md transition-shadow border-l-4 ${task.priority === 'high' ? 'border-l-warning' : task.priority === 'urgent' ? 'border-l-destructive' : task.priority === 'low' ? 'border-l-muted' : 'border-l-info'} group`}
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData("taskId", task.id as string)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          const uid = e.dataTransfer.getData("userId");
+                          if (uid) {
+                            e.stopPropagation();
+                            assignTask(task.id as string, uid);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Checkbox 
+                                checked={task.status === "completed"} 
+                                onCheckedChange={() => toggleTaskStatus(task)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <Badge variant="outline" className={priorityColors[task.priority || "medium"]}>
+                                {task.priority}
+                              </Badge>
                             </div>
-                            <h3 className="font-medium mt-2">{task.title}</h3>
-                            <div className="mt-3 flex items-center justify-between gap-3">
-                              <div className="inline-flex items-center gap-2 text-sm">
-                                <Calendar className="h-4 w-4" />
-                                {task.due_date ? new Date(task.due_date).toLocaleDateString() : "No deadline"}
-                              </div>
-                              <div />
-                            </div>
-                            <div className="mt-3 flex items-center justify-between gap-3">
-                              <div className="text-sm">
-                                {task.assigned_to ? (
-                                  <>Assigned to {owner?.full_name || owner?.email}</>
-                                ) : (
-                                  <>Unassigned</>
-                                )}
-                              </div>
-                              <div />
+                            {task.assigned_to && (
+                              <Avatar className="h-6 w-6">
+                                <AvatarFallback className="text-[10px]">
+                                  {assignedProfile?.full_name?.slice(0, 2).toUpperCase() || "U"}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                          </div>
+                          
+                          <h3 className="font-medium text-sm mb-2 line-clamp-2" title={task.title}>{task.title}</h3>
+                          
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {task.due_date ? new Date(task.due_date).toLocaleDateString() : "No date"}
                             </div>
                             
-                            <div className="mt-3 flex items-center justify-between gap-3">
-                              <div className="text-sm   text-muted-foreground">
-                                {(task.lead_id || task.deal_id) ? "Deal" : ""}
-                              </div>
-                              <div className="flex items-center gap-2 justify-end">
+                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setViewTask(task)} title="View Details">
+                                  <Eye className="h-3 w-3" />
+                                </Button>
                                 {can("tasks", "can_edit") && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      setEditingId(task.id);
-                                      setFormData({
-                                        title: task.title || "",
-                                        description: task.description || "",
-                                        priority: task.priority || "medium",
-                                        status: task.status || "todo",
-                                        due_date: task.due_date?.split("T")[0] || "",
-                                        assigned_to: task.assigned_to || "",
-                                        lead_id: task.lead_id || "",
-                                        deal_id: task.deal_id || "",
-                                      });
-                                      setDialogOpen(true);
-                                    }}
-                                    title="Edit"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                {can("tasks", "can_edit") && (
-                                  <Select onValueChange={(v) => assignTask(task.id as string, v)}>
-                                    <SelectTrigger className="w-[36px] justify-center" title="Assign">
-                                      <UserPlus className="h-24 w-24" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {profiles.map((p) => (
-                                        <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                                {/* {task.status !== "in_progress" && task.status !== "completed" && (
-                                  <Button variant="secondary" size="icon" onClick={() => startTask(task)} title="Start">
-                                    <Play className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                {task.status !== "completed" && (
-                                  <Button variant="default" size="icon" onClick={() => completeTask(task)} title="Complete">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                  </Button>
-                                )} */}
-                                {/* <Dialog open={commentsOpenTaskId === task.id} onOpenChange={(open) => {
-                                  setCommentsOpenTaskId(open ? (task.id as string) : null);
-                                  if (open) fetchTaskMessages(task.id as string);
-                                  if (!open) { setCommentText(""); setCommentMention(""); }
-                                }}>
-                                  <DialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" title="Comments">
-                                      <MessageSquare className="h-4 w-4" />
+                                  <>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                                        setEditingId(task.id as string);
+                                        setFormData({
+                                          title: task.title,
+                                          description: task.description || "",
+                                          priority: task.priority || "medium",
+                                          status: task.status || "todo",
+                                          due_date: task.due_date ? task.due_date.split("T")[0] : "",
+                                          assigned_to: task.assigned_to || "",
+                                          lead_id: task.lead_id || "",
+                                          deal_id: task.deal_id || "",
+                                          project_id: task.project_id || null,
+                                        });
+                                        setDialogOpen(true);
+                                      }}
+                                      title="Edit"
+                                    >
+                                      <Pencil className="h-3 w-3" />
                                     </Button>
-                                  </DialogTrigger>
-                                  <DialogContent>
-                                    <DialogHeader><DialogTitle>Comments</DialogTitle></DialogHeader>
-                                    <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-                                      {(taskComments[task.id as string] || []).map((m) => {
-                                        const author = profiles.find((p) => p.id === m.author_id);
-                                        return (
-                                          <div key={m.id} className="p-2 rounded-md bg-muted/40">
-                                            <div className="text-sm">{m.content}</div>
-                                            <div className="text-xs text-muted-foreground">
-                                              {(author?.full_name || author?.email || "User")} • {new Date(m.created_at).toLocaleString()}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label>Add a comment</Label>
-                                      <Textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} />
-                                      <Label>Mention (optional)</Label>
-                                      <Select value={commentMention} onValueChange={(v) => setCommentMention(v)}>
-                                        <SelectTrigger><SelectValue placeholder="Select user to mention" /></SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="">None</SelectItem>
-                                          {profiles.map((p) => (
-                                            <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                      <Button onClick={() => postTaskMessage(task.id as string)} disabled={!commentText.trim()}>Post</Button>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog> */}
-                                {can("tasks", "can_edit") && (
-                                  <Button variant="destructive" size="icon" onClick={() => deleteTask(task.id as string)} title="Delete">
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => deleteTask(task.id as string)} title="Delete">
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </>
                                 )}
-                              </div>
                             </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })
-                  )}
-                </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
+                )}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
+      </div>
       )}
       </>
       )}
+      <TaskDetailsSheet task={viewTask} open={!!viewTask} onOpenChange={(open) => !open && setViewTask(null)} />
     </div>
   );
 }

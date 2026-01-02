@@ -41,11 +41,6 @@ export default function AttendancePage() {
     notes: "",
   });
 
-  useEffect(() => {
-    fetchAttendance();
-    fetchEmployees();
-  }, [fetchAttendance, fetchEmployees]);
-
   const fetchAttendance = useCallback(async () => {
     const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
     const currentEmpId = (empsData || []).find((e) => e.user_id === user?.id)?.id || null;

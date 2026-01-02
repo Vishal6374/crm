@@ -44,6 +44,7 @@ type PayrollRow = {
   net_salary: number | null;
   status: "pending" | "processed" | "paid";
   paid_at?: string | null;
+  rejection_note?: string | null;
   created_at: string;
 };
 
@@ -51,6 +52,7 @@ const statusColors: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
   processed: "bg-info/10 text-info",
   paid: "bg-success/10 text-success",
+  rejected: "bg-destructive/10 text-destructive",
 };
 
 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -78,11 +80,10 @@ export default function PayrollPage() {
     deductions: "0",
     status: "pending",
   });
-
-  useEffect(() => {
-    fetchPayroll();
-    fetchEmployees();
-  }, [fetchPayroll, fetchEmployees]);
+  
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
+  const [rejectId, setRejectId] = useState<string | null>(null);
 
   const fetchPayroll = useCallback(async () => {
     const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id, salary");
@@ -218,6 +219,32 @@ export default function PayrollPage() {
     if (!error) fetchPayroll();
   }
 
+  async function rejectPayroll() {
+    if (!rejectId) return;
+    if (!can("payroll", "can_edit")) {
+      toast({ title: "Not allowed", description: "You do not have permission to update payroll.", variant: "destructive" });
+      return;
+    }
+    const { error } = await supabase
+      .from("payroll")
+      .update({ 
+        status: "rejected", 
+        rejection_note: rejectNote,
+        paid_at: null 
+      })
+      .eq("id", rejectId);
+      
+    if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+        toast({ title: "Payroll rejected" });
+        setRejectOpen(false);
+        setRejectNote("");
+        setRejectId(null);
+        fetchPayroll();
+    }
+  }
+
   async function bulkMarkPaid() {
     if (!can("payroll", "can_edit")) {
       toast({ title: "Not allowed", description: "You do not have permission to update payroll.", variant: "destructive" });
@@ -262,6 +289,29 @@ export default function PayrollPage() {
   const totalPending = payroll.filter((p) => p.status === "pending").reduce((sum, p) => sum + Number(p.net_salary || 0), 0);
   const totalPaid = payroll.filter((p) => p.status === "paid").reduce((sum, p) => sum + Number(p.net_salary || 0), 0);
 
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneSourceMonth, setCloneSourceMonth] = useState((new Date().getMonth() || 12).toString());
+  const [cloneSourceYear, setCloneSourceYear] = useState((new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear()).toString());
+  const [cloneTargetMonth, setCloneTargetMonth] = useState((new Date().getMonth() + 1).toString());
+  const [cloneTargetYear, setCloneTargetYear] = useState(new Date().getFullYear().toString());
+
+  async function handleClonePayroll() {
+    const { data, error } = await supabase.rpc('clone_payroll_month', {
+      source_month: parseInt(cloneSourceMonth),
+      source_year: parseInt(cloneSourceYear),
+      target_month: parseInt(cloneTargetMonth),
+      target_year: parseInt(cloneTargetYear)
+    });
+    
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: `Cloned ${data} records.` });
+      setCloneOpen(false);
+      fetchPayroll();
+    }
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
         {!can("payroll", "can_view") ? (
@@ -274,6 +324,50 @@ export default function PayrollPage() {
             <p className="page-description">Manage salary and compensation</p>
           </div>
         <div className="flex items-center gap-2">
+          {can("payroll", "can_create") && (
+            <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline"><MoreHorizontal className="mr-2 h-4 w-4" />Clone Last Month</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Clone Payroll</DialogTitle></DialogHeader>
+                <div className="grid grid-cols-2 gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Source Month</Label>
+                    <Select value={cloneSourceMonth} onValueChange={setCloneSourceMonth}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {months.map((m, i) => <SelectItem key={i} value={(i+1).toString()}>{m}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Select value={cloneSourceYear} onValueChange={setCloneSourceYear}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {[2024, 2025, 2026].map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Target Month</Label>
+                    <Select value={cloneTargetMonth} onValueChange={setCloneTargetMonth}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {months.map((m, i) => <SelectItem key={i} value={(i+1).toString()}>{m}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Select value={cloneTargetYear} onValueChange={setCloneTargetYear}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {[2024, 2025, 2026].map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button onClick={handleClonePayroll} className="w-full">Clone Records</Button>
+              </DialogContent>
+            </Dialog>
+          )}
+
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             {can("payroll", "can_create") && (
               <DialogTrigger asChild>
@@ -399,6 +493,27 @@ export default function PayrollPage() {
               </div>
             </DialogContent>
           </Dialog>
+
+          <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Reject Payroll</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                   <Label>Reason for Rejection</Label>
+                   <Input 
+                     value={rejectNote} 
+                     onChange={(e) => setRejectNote(e.target.value)} 
+                     placeholder="Enter reason..."
+                   />
+                </div>
+                <Button variant="destructive" onClick={rejectPayroll} disabled={!rejectNote}>
+                  Confirm Rejection
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           {can("payroll", "can_edit") && (
             <Button variant="outline" onClick={bulkMarkPaid} disabled={selected.size === 0}>Mark Selected Paid</Button>
           )}
@@ -470,13 +585,26 @@ export default function PayrollPage() {
                           <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {p.status === "pending" && can("payroll", "can_edit") && (
-                            <DropdownMenuItem onClick={() => updatePayrollStatus(p.id, "processed")}>Process</DropdownMenuItem>
+                          {p.status === "pending" && (role === "tenant_admin" || can("payroll", "can_edit")) && (
+                             /* Only tenant_admin should approve, but if logic allows HR to edit, we should hide Process for HR if restricted. 
+                                updates.md says: "Payroll approval is restricted to Tenant Admin only." 
+                                So I will strictly check for tenant_admin (or check if user is NOT hr if role names are uncertain, but usually tenant_admin is the role). 
+                                The code uses `role` from `usePermissions`. */
+                             role === "tenant_admin" && (
+                              <>
+                                <DropdownMenuItem onClick={() => updatePayrollStatus(p.id, "processed")}>Process (Approve)</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                  setRejectId(p.id);
+                                  setRejectOpen(true);
+                                }}>Reject</DropdownMenuItem>
+                              </>
+                             )
                           )}
-                          {p.status === "processed" && can("payroll", "can_edit") && (
+                          {p.status === "processed" && role === "tenant_admin" && (
                             <DropdownMenuItem onClick={() => updatePayrollStatus(p.id, "paid")}>Mark Paid</DropdownMenuItem>
                           )}
-                          {can("payroll", "can_edit") && (<DropdownMenuItem onClick={() => {
+                          {/* HR can edit pending payrolls */}
+                          {p.status === "pending" && can("payroll", "can_edit") && (<DropdownMenuItem onClick={() => {
                             setEditing(p);
                             setFormData({
                               employee_id: p.employee_id,

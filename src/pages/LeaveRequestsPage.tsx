@@ -34,7 +34,7 @@ export default function LeaveRequestsPage() {
   const { toast } = useToast();
   const { can, role } = usePermissions();
   const [leaveRequests, setLeaveRequests] = useState<(Database["public"]["Tables"]["leave_requests"]["Row"] & { employees?: { employee_id: string; profiles?: { full_name: string | null } } })[]>([]);
-  const [employees, setEmployees] = useState<{ id: string; employee_id: string; profiles?: { full_name: string | null } }[]>([]);
+  const [employees, setEmployees] = useState<{ id: string; employee_id: string; user_id: string | null; profiles?: { full_name: string | null } }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -45,11 +45,6 @@ export default function LeaveRequestsPage() {
     end_date: "",
     reason: "",
   });
-
-  useEffect(() => {
-    fetchLeaveRequests();
-    fetchEmployees();
-  }, [fetchLeaveRequests, fetchEmployees]);
 
   const fetchLeaveRequests = useCallback(async () => {
     const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
@@ -102,6 +97,7 @@ export default function LeaveRequestsPage() {
       return {
         id: emp.id,
         employee_id: emp.employee_id,
+        user_id: emp.user_id,
         profiles: prof ? { full_name: prof.full_name } : null
       };
     });
@@ -113,6 +109,11 @@ export default function LeaveRequestsPage() {
       setEmployees(joinedEmployees);
     }
   }, [role, user?.id]);
+
+  useEffect(() => {
+    fetchLeaveRequests();
+    fetchEmployees();
+  }, [fetchLeaveRequests, fetchEmployees]);
 
   async function createLeaveRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -142,6 +143,33 @@ export default function LeaveRequestsPage() {
       toast({ title: "Not allowed", description: "You do not have permission to approve or reject leave requests.", variant: "destructive" });
       return;
     }
+
+    // Check if the requester is an HR, and if so, enforce that only Tenant Admin can approve
+    const request = leaveRequests.find((r) => r.id === id);
+    if (request && request.employees?.employee_id) {
+       // We need the user_id of the requester. 
+       // The current leaveRequests state has employees joined, but maybe not user_id directly exposed in the join unless I selected it.
+       // The fetchLeaveRequests function selects "*, employees(*, profiles(id,full_name))". 
+       // employees table has user_id. So request.employees.user_id should be available if I type it right.
+       
+       // Let's fetch the requester's roles to check if they are HR
+       const emp = employees.find(e => e.id === request.employee_id);
+       if (emp?.user_id) {
+          const { data: userRoles } = await supabase
+            .from("user_roles")
+            .select("roles(name)")
+            .eq("user_id", emp.user_id);
+          
+          const isRequesterHR = userRoles?.some((ur: any) => ur.roles?.name === "hr");
+          const isApproverAdmin = role === "tenant_admin";
+
+          if (isRequesterHR && !isApproverAdmin) {
+             toast({ title: "Not allowed", description: "HR leave requests can only be approved by the Tenant Admin.", variant: "destructive" });
+             return;
+          }
+       }
+    }
+
     const { error } = await supabase
       .from("leave_requests")
       .update({ status, approved_by: user?.id, approved_at: new Date().toISOString() })

@@ -14,7 +14,7 @@ type CapabilityMap = Record<
 
 export function usePermissions() {
   const { user } = useAuth();
-  const [role, setRole] = useState<"admin" | "manager" | "employee" | "viewer" | "hr" | "finance" | null>(null);
+  const [role, setRole] = useState<"super_admin" | "admin" | "manager" | "employee" | "viewer" | "hr" | "finance" | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [caps, setCaps] = useState<CapabilityMap>({});
   const [loading, setLoading] = useState(true);
@@ -22,7 +22,17 @@ export function usePermissions() {
   const refresh = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("organization_id, super_admin").eq("id", user.id).maybeSingle();
+    
+    // Check super admin
+    if (profile && (profile as any).super_admin) {
+        setRole("super_admin");
+        setOrgId(null);
+        setCaps({}); // Super admin has implicit full access
+        setLoading(false);
+        return;
+    }
+
     const organization_id = profile && typeof (profile as { organization_id?: string | null }).organization_id === "string"
       ? (profile as { organization_id?: string | null }).organization_id
       : null;
@@ -78,6 +88,10 @@ export function usePermissions() {
 
   const can = useCallback(
     (module: string, capability: keyof NonNullable<CapabilityMap[string]>) => {
+      if (role === "super_admin") {
+          // Super admin can only access platform modules
+          return module === "super_admin" || module === "settings";
+      }
       if (role === "admin") return true;
       const m = caps[module];
       if (!m) return false;

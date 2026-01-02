@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Mail, Phone, Building, User, Calendar, IndianRupee, Globe, FileText, Clock } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -32,11 +33,12 @@ const statusColors: Record<string, string> = {
 };
 
 export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetProps) {
+  const { user } = useAuth();
   const [activities, setActivities] = useState<Tables<'activity_logs'>[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [notes, setNotes] = useState("");
   const [addingNote, setAddingNote] = useState(false);
-  const [comments, setComments] = useState<Array<{ id: string; content: string; created_at: string; author_id: string }>>([]);
+  const [comments, setComments] = useState<Array<{ id: string; content: string; created_at: string; author_id: string | null; author?: { full_name: string | null } }>>([]);
   const [commentText, setCommentText] = useState("");
   const [commentMention, setCommentMention] = useState<string>("");
   const [profiles, setProfiles] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
@@ -59,13 +61,19 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
 
   const fetchComments = useCallback(async () => {
     if (!lead) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("messages")
-      .select("*")
+      .select("*, author:profiles(full_name)")
       .eq("entity_type", "lead")
       .eq("entity_id", lead.id)
       .order("created_at", { ascending: false });
-    setComments(data || []);
+    
+    if (error) {
+        console.error("Error fetching comments:", error);
+        return;
+    }
+    // Cast data to match state type since PostgREST types might not fully infer the join
+    setComments((data as any) || []);
   }, [lead]);
 
   const fetchProfiles = useCallback(async () => {
@@ -85,23 +93,26 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
   }, [lead?.id, open, fetchActivities, fetchComments, fetchProfiles]);
 
   async function postComment() {
-    if (!lead) return;
+    if (!lead || !user) return;
     const mentions = commentMention ? [commentMention] : [];
     const commentPayload: TablesInsert<'messages'> = {
       entity_type: "lead",
       entity_id: lead.id,
-      author_id: lead.user_id || null,
+      author_id: user.id,
       content: commentText,
       mentions,
     };
     const { error } = await supabase.from("messages").insert([commentPayload]);
-    if (error) return;
+    if (error) {
+        console.error("Error posting comment:", error);
+        return;
+    }
     const activityPayload: TablesInsert<'activity_logs'> = {
       action: "comment_added",
       entity_type: "lead",
       entity_id: lead.id,
       description: "Comment added to lead",
-      user_id: lead.user_id || null,
+      user_id: user.id,
     };
     await supabase.from("activity_logs").insert([activityPayload]);
     setCommentText("");
@@ -228,9 +239,16 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
               {comments.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">No comments yet.</div>
               ) : comments.map((m) => (
-                <div key={m.id} className="p-2 rounded-md bg-muted/40">
-                  <div className="text-sm">{m.content}</div>
-                  <div className="text-xs text-muted-foreground">{format(new Date(m.created_at), "MMM d, yyyy h:mm a")}</div>
+                <div key={m.id} className="p-3 rounded-md bg-muted/40">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs font-semibold text-primary">
+                      {m.author?.full_name || "Unknown User"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(m.created_at), "MMM d, h:mm a")}
+                    </span>
+                  </div>
+                  <div className="text-sm whitespace-pre-wrap">{m.content}</div>
                 </div>
               ))}
             </div>
