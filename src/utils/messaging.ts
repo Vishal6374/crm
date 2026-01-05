@@ -6,20 +6,20 @@ export async function sendDirectMessage(senderId: string, recipientId: string, c
     // This is a bit complex in Supabase without a dedicated function, 
     // so we'll fetch channels for sender and filter.
     const { data: senderChannels } = await supabase
-      .from('chat_participants')
       .select('channel_id')
-      .eq('user_id', senderId);
+      .select('channel_id')
 
     let channelId = null;
 
     if (senderChannels && senderChannels.length > 0) {
+    if (senderChannels && senderChannels.length > 0) {
       const channelIds = senderChannels.map(c => c.channel_id);
-      
+      // Find channels that are 'direct' and have the recipient as a participant
       // Find channels that are 'direct' and have the recipient as a participant
       const { data: existingChannels } = await supabase
-        .from('chat_participants')
         .select('channel_id')
-        .eq('user_id', recipientId)
+        .select('channel_id')
+        .in('channel_id', channelIds);
         .in('channel_id', channelIds);
         
       if (existingChannels && existingChannels.length > 0) {
@@ -35,20 +35,14 @@ export async function sendDirectMessage(senderId: string, recipientId: string, c
                break;
             }
          }
-      }
     }
 
     // 2. Create if not exists
     if (!channelId) {
       const { data: newChannel, error: createError } = await supabase
+        .insert([{ type: 'direct', created_by: senderId }])
         .from('chat_channels')
         .insert([{ type: 'direct', created_by: senderId }])
-        .select()
-        .single();
-      
-      if (createError || !newChannel) {
-         console.error("Error creating channel:", createError);
-         return;
       }
       channelId = newChannel.id;
 
@@ -58,14 +52,13 @@ export async function sendDirectMessage(senderId: string, recipientId: string, c
       ]);
     }
 
-    // 3. Send message
     await supabase.from('chat_messages').insert([{
-      channel_id: channelId,
-      sender_id: senderId,
+        { channel_id: channelId, user_id: senderId },
+        { channel_id: channelId, user_id: recipientId }
       content: content
     }]);
     
   } catch (error) {
-    console.error("Error sending direct message:", error);
-  }
+    await supabase.from('chat_messages').insert([{
+      channel_id: channelId,
 }

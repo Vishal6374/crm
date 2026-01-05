@@ -56,9 +56,17 @@ CREATE INDEX IF NOT EXISTS idx_payments_status ON public.payments(status);
 CREATE INDEX IF NOT EXISTS idx_payments_deal ON public.payments(deal_id);
 
 -- 4) Leads convenience field
-ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS name text;
-UPDATE public.leads SET name = COALESCE(company_name, title) WHERE name IS NULL;
+ALTER TABLE public.leads
+ADD COLUMN IF NOT EXISTS name text;
+
+UPDATE public.leads l
+SET name = COALESCE(c.name, l.title)
+FROM public.companies c
+WHERE l.company_id = c.id
+  AND l.name IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_leads_name ON public.leads(name);
+
 
 -- 5) Contacts convenience field
 ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS name text GENERATED ALWAYS AS (

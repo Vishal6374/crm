@@ -17,6 +17,11 @@ import { DealsKanban } from "@/components/deals/DealsKanban";
 import { DealDetailsSheet } from "@/components/deals/DealDetailsSheet";
 import { usePermissions } from "@/hooks/use-permissions";
 
+type DealWithDetails = Database["public"]["Tables"]["deals"]["Row"] & {
+  contacts?: Pick<Database["public"]["Tables"]["contacts"]["Row"], "id" | "first_name" | "last_name">;
+  assigned_to_profile?: Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "full_name">;
+};
+
 const stages = [
   { value: "prospecting", label: "Prospecting", color: "bg-muted text-muted-foreground" },
   { value: "qualification", label: "Qualification", color: "bg-info/10 text-info" },
@@ -28,13 +33,12 @@ const stages = [
 
 export default function DealsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
-  const { can, role } = usePermissions();
+  const [loading, setLoading] = useState(true);
+  const { can, role, orgId } = usePermissions();
   const [deals, setDeals] = useState<DealWithDetails[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
-  const [contacts, setContacts] = useState<{ id: string; first_name: string; last_name: string }[]>([]);
+  const [contacts, setContacts] = useState<{ id: string; first_name: string | null; last_name: string | null }[]>([]);
   const [employees, setEmployees] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("kanban");
   const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null);
@@ -56,6 +60,9 @@ export default function DealsPage() {
 
   const fetchDeals = useCallback(async () => {
     let query = supabase.from("deals").select("*").order("created_at", { ascending: false });
+    if (orgId) {
+      query = query.eq("organization_id", orgId as string);
+    }
     if (role === "employee" && user?.id) {
       query = query.eq("assigned_to", user.id);
     }
@@ -66,22 +73,20 @@ export default function DealsPage() {
       return;
     }
 
-    const [compRes, contRes, profRes] = await Promise.all([
-      supabase.from("companies").select("id, name"),
-      supabase.from("contacts").select("id, first_name, last_name"),
-      supabase.from("profiles").select("id, full_name")
+    const [contRes, profRes] = await Promise.all([
+      supabase.from("contacts").select("id, first_name, last_name").eq("organization_id", orgId as string),
+      supabase.from("profiles").select("id, full_name").eq("organization_id", orgId as string)
     ]);
 
     const joinedDeals = dealsData.map(deal => ({
       ...deal,
-      companies: compRes.data?.find(c => c.id === deal.company_id) || undefined,
       contacts: contRes.data?.find(c => c.id === deal.contact_id) || undefined,
       assigned_to_profile: profRes.data?.find(p => p.id === deal.assigned_to) || undefined
     }));
 
     setDeals(joinedDeals);
     setLoading(false);
-  }, [role, user?.id]);
+  }, [role, user?.id, orgId]);
 
   useEffect(() => {
     fetchDeals();
@@ -91,18 +96,17 @@ export default function DealsPage() {
   }, [fetchDeals]);
 
   async function fetchEmployees() {
-    const { data } = await supabase.from("profiles").select("id, full_name, email");
+    const { data } = await supabase.from("profiles").select("id, full_name, email").eq("organization_id", orgId as string);
     if (data) setEmployees(data);
   }
 
-
   async function fetchCompanies() {
-    const { data } = await supabase.from("companies").select("id, name").order("name");
+    const { data } = await supabase.from("companies").select("id, name").eq("organization_id", orgId as string).order("name");
     if (data) setCompanies(data);
   }
 
   async function fetchContacts() {
-    const { data } = await supabase.from("contacts").select("id, first_name, last_name").order("first_name");
+    const { data } = await supabase.from("contacts").select("id, first_name, last_name").eq("organization_id", orgId as string).order("first_name");
     if (data) setContacts(data);
   }
 
@@ -119,6 +123,7 @@ export default function DealsPage() {
       expected_close_date: formData.expected_close_date || null,
       created_by: user?.id,
       assigned_to: user?.id, // Default assign to creator
+      organization_id: orgId as string,
     }]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -228,7 +233,7 @@ export default function DealsPage() {
     toast({ title: "Deal assigned successfully" });
 
     if (userId !== user?.id) {
-      sendDirectMessage(user?.id || "", userId, `You have been assigned to deal #${dealId}`);
+      // sendDirectMessage(user?.id || "", userId, `You have been assigned to deal #${dealId}`);
     }
 
     await supabase.from("activity_logs").insert([{

@@ -57,7 +57,7 @@ const months = ["January", "February", "March", "April", "May", "June", "July", 
 
 export default function PayrollPage() {
   const { toast } = useToast();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const { user } = useAuth();
   const [payroll, setPayroll] = useState<(PayrollRow & { employees?: EmployeeSummary })[]>([]);
   const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
@@ -79,13 +79,13 @@ export default function PayrollPage() {
     status: "pending",
   });
 
-  useEffect(() => {
-    fetchPayroll();
-    fetchEmployees();
-  }, [fetchPayroll, fetchEmployees]);
+
 
   const fetchPayroll = useCallback(async () => {
-    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id, salary");
+    const { data: empsData } = await supabase
+      .from("employees")
+      .select("id, employee_id, user_id, salary")
+      .eq("organization_id", orgId as string);
     const currentEmpId = (empsData || []).find((e) => (e as EmployeeRow).user_id === user?.id)?.id || null;
     let builder = supabase
       .from("payroll")
@@ -93,6 +93,9 @@ export default function PayrollPage() {
       .order("year", { ascending: false })
       .order("month", { ascending: false })
       .limit(100);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
     if (role === "employee" && currentEmpId) {
       builder = builder.eq("employee_id", currentEmpId);
     }
@@ -103,13 +106,15 @@ export default function PayrollPage() {
       return;
     }
 
-    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
-
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", orgId as string);
     const joinedPayroll = (payrollData || []).map((pay) => {
       const payRow = pay as unknown as PayrollRow;
       const emp = (empsData || []).find((e) => (e as EmployeeRow).id === payRow.employee_id) as EmployeeRow | undefined;
       const prof = (profilesData || []).find((p) => (p as ProfileRow).id === emp?.user_id) as ProfileRow | undefined;
-      const employees: EmployeeSummary | undefined = emp
+      const employees = emp
         ? {
             id: emp.id,
             employee_id: emp.employee_id,
@@ -122,19 +127,22 @@ export default function PayrollPage() {
 
     setPayroll(joinedPayroll);
     setLoading(false);
-  }, [role, user?.id]);
+  }, [role, user?.id, orgId]);
 
   const fetchEmployees = useCallback(async () => {
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id, salary")
+      .eq("organization_id", orgId as string)
       .eq("status", "active")
       .order("employee_id");
     
     if (!empsData) return;
 
-    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
-
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", orgId as string);
     const joinedEmployees = (empsData || []).map((emp) => {
       const empRow = emp as EmployeeRow;
       const prof = (profilesData || []).find((p) => (p as ProfileRow).id === empRow.user_id) as ProfileRow | undefined;
@@ -147,8 +155,11 @@ export default function PayrollPage() {
     });
 
     setEmployees(joinedEmployees);
-  }, []);
-
+  }, [orgId]);
+    useEffect(() => {
+    fetchPayroll();
+    fetchEmployees();
+  }, [fetchPayroll, fetchEmployees]);
   async function createPayroll(e: React.FormEvent) {
     e.preventDefault();
     if (editing) {
@@ -392,8 +403,7 @@ export default function PayrollPage() {
                     toast({ title: "Monthly payroll generated" });
                     setGenDialogOpen(false);
                     fetchPayroll();
-                  }}
-                >
+                  }}>
                   Generate
                 </Button>
               </div>

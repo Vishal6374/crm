@@ -17,7 +17,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 export default function CompaniesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const [companies, setCompanies] = useState<Database["public"]["Tables"]["companies"]["Row"][]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -41,10 +41,11 @@ export default function CompaniesPage() {
   }, []);
 
   async function fetchCompanies() {
-    const { data, error } = await supabase
-      .from("companies")
-      .select("*")
-      .order("created_at", { ascending: false });
+    let builder = supabase.from("companies").select("*").order("created_at", { ascending: false });
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data, error } = await builder;
     if (!error) setCompanies(data || []);
     setLoading(false);
   }
@@ -63,9 +64,13 @@ export default function CompaniesPage() {
       }
     }
     if (editingCompany) {
-      const { error } = await supabase.from("companies").update({
+      let builder = supabase.from("companies").update({
         ...formData,
       }).eq("id", editingCompany.id);
+      if (orgId) {
+        builder = builder.eq("organization_id", orgId as string);
+      }
+      const { error } = await builder;
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
         return;
@@ -75,6 +80,7 @@ export default function CompaniesPage() {
       const { error } = await supabase.from("companies").insert([{
         ...formData,
         created_by: user?.id,
+        organization_id: orgId as string,
       }]);
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -118,7 +124,11 @@ export default function CompaniesPage() {
       return;
     }
     if (!confirm("Delete this company?")) return;
-    const { error } = await supabase.from("companies").delete().eq("id", id);
+    let builder = supabase.from("companies").delete().eq("id", id);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { error } = await builder;
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }

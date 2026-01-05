@@ -24,7 +24,7 @@ const statusColors: Record<string, string> = {
 export default function EmployeesPage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const [employees, setEmployees] = useState<EmployeeWithDetails[]>([]);
   const [departments, setDepartments] = useState<Tables<'departments'>[]>([]);
   const [designations, setDesignations] = useState<Tables<'designations'>[]>([]);
@@ -50,6 +50,7 @@ export default function EmployeesPage() {
     const { data: employeesData, error } = await supabase
       .from("employees")
       .select("*")
+      .eq("organization_id", orgId as string)
       .order("created_at", { ascending: false });
     
     if (error) {
@@ -61,9 +62,9 @@ export default function EmployeesPage() {
 
     // Fetch related data manually to avoid foreign key relationship errors
     const [deptRes, desigRes, profRes] = await Promise.all([
-      supabase.from("departments").select("*"),
-      supabase.from("designations").select("*"),
-      supabase.from("profiles").select("*")
+      supabase.from("departments").select("*").eq("organization_id", orgId as string),
+      supabase.from("designations").select("*").eq("organization_id", orgId as string),
+      supabase.from("profiles").select("*").eq("organization_id", orgId as string)
     ]);
 
     const filtered = role === "employee" ? employeesData.filter(emp => emp.user_id === user?.id) : employeesData;
@@ -76,22 +77,22 @@ export default function EmployeesPage() {
 
     setEmployees(joinedEmployees);
     setLoading(false);
-  }, [toast, role, user?.id]);
+  }, [toast, role, user?.id, orgId]);
 
   const fetchDepartments = useCallback(async () => {
-    const { data } = await supabase.from("departments").select("id, name").order("name");
+    const { data } = await supabase.from("departments").select("id, name").eq("organization_id", orgId as string).order("name");
     if (data) setDepartments(data);
-  }, []);
+  }, [orgId]);
 
   const fetchDesignations = useCallback(async () => {
-    const { data } = await supabase.from("designations").select("id, title").order("title");
+    const { data } = await supabase.from("designations").select("id, title").eq("organization_id", orgId as string).order("title");
     if (data) setDesignations(data);
-  }, []);
+  }, [orgId]);
 
   const fetchProfiles = useCallback(async () => {
-    const { data } = await supabase.from("profiles").select("id, full_name, email").order("full_name");
+    const { data } = await supabase.from("profiles").select("id, full_name, email").eq("organization_id", orgId as string).order("full_name");
     if (data) setProfiles(data);
-  }, []);
+  }, [orgId]);
 
   useEffect(() => {
     fetchEmployees();

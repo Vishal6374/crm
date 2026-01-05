@@ -15,7 +15,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 export default function DesignationsPage() {
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const [designations, setDesignations] = useState<(Tables<'designations'> & { departments: Pick<Tables<'departments'>, 'name'> | null })[]>([]);
   const [departments, setDepartments] = useState<Pick<Tables<'departments'>, 'id' | 'name'>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,16 +30,21 @@ export default function DesignationsPage() {
   }, []);
 
   async function fetchDesignations() {
-    const { data, error } = await supabase
-      .from("designations")
-      .select("*, departments(name)")
-      .order("title");
+    let builder = supabase.from("designations").select("*, departments(name)").order("title");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data, error } = await builder;
     if (!error) setDesignations(data || []);
     setLoading(false);
   }
 
   async function fetchDepartments() {
-    const { data } = await supabase.from("departments").select("id, name").order("name");
+    let builder = supabase.from("departments").select("id, name").order("name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     if (data) setDepartments(data);
   }
 
@@ -53,6 +58,7 @@ export default function DesignationsPage() {
       title: formData.title,
       description: formData.description,
       department_id: formData.department_id || null,
+      organization_id: orgId as string,
     }]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -72,11 +78,15 @@ export default function DesignationsPage() {
       toast({ title: "Not allowed", description: "You do not have permission to edit designations.", variant: "destructive" });
       return;
     }
-    const { error } = await supabase.from("designations").update({
+    let builder = supabase.from("designations").update({
       title: formData.title,
       description: formData.description,
       department_id: formData.department_id || null,
     }).eq("id", editingId);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { error } = await builder;
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -93,7 +103,11 @@ export default function DesignationsPage() {
       toast({ title: "Not allowed", description: "You do not have permission to delete designations.", variant: "destructive" });
       return;
     }
-    const { error } = await supabase.from("designations").delete().eq("id", id);
+    let builder = supabase.from("designations").delete().eq("id", id);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { error } = await builder;
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {

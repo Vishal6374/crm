@@ -32,9 +32,9 @@ const leaveTypeLabels: Record<string, string> = {
 export default function LeaveRequestsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const [leaveRequests, setLeaveRequests] = useState<(Database["public"]["Tables"]["leave_requests"]["Row"] & { employees?: { employee_id: string; profiles?: { full_name: string | null } } })[]>([]);
-  const [employees, setEmployees] = useState<{ id: string; employee_id: string; profiles?: { full_name: string | null } }[]>([]);
+  const [employees, setEmployees] = useState<{ id: string; employee_id: string; user_id: string | null; profiles?: { full_name: string | null } }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -46,18 +46,21 @@ export default function LeaveRequestsPage() {
     reason: "",
   });
 
-  useEffect(() => {
-    fetchLeaveRequests();
-    fetchEmployees();
-  }, [fetchLeaveRequests, fetchEmployees]);
+
 
   const fetchLeaveRequests = useCallback(async () => {
-    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
+    const { data: empsData } = await supabase
+      .from("employees")
+      .select("id, employee_id, user_id")
+      .eq("organization_id", orgId as string);
     const currentEmpId = (empsData || []).find((e) => e.user_id === user?.id)?.id || null;
     let builder = supabase
       .from("leave_requests")
       .select("*")
       .order("created_at", { ascending: false });
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
     if (role === "employee" && currentEmpId) {
       builder = builder.eq("employee_id", currentEmpId);
     }
@@ -68,9 +71,12 @@ export default function LeaveRequestsPage() {
       return;
     }
 
-    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", orgId as string);
 
-    const joinedRequests = requestsData.map(req => {
+    const joinedRequests = (requestsData || []).map(req => {
       const emp = empsData?.find(e => e.id === req.employee_id);
       const prof = profilesData?.find(p => p.id === emp?.user_id);
       return {
@@ -84,20 +90,21 @@ export default function LeaveRequestsPage() {
 
     setLeaveRequests(joinedRequests);
     setLoading(false);
-  }, [role, user?.id]);
+  }, [role, user?.id, orgId]);
 
   const fetchEmployees = useCallback(async () => {
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id, status")
-      .eq("status", "active")
+      .eq("organization_id", orgId as string)
       .order("employee_id");
-    
-    if (!empsData) return;
 
-    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", orgId as string);
 
-    const joinedEmployees = empsData.map(emp => {
+    const joinedEmployees = (empsData || []).map(emp => {
       const prof = profilesData?.find(p => p.id === emp.user_id);
       return {
         id: emp.id,
@@ -112,8 +119,11 @@ export default function LeaveRequestsPage() {
     } else {
       setEmployees(joinedEmployees);
     }
-  }, [role, user?.id]);
-
+  }, [role, user?.id, orgId]);
+    useEffect(() => {
+    fetchLeaveRequests();
+    fetchEmployees();
+  }, [fetchLeaveRequests, fetchEmployees]);
   async function createLeaveRequest(e: React.FormEvent) {
     e.preventDefault();
     if (!can("leave_requests", "can_create")) {
@@ -149,7 +159,7 @@ export default function LeaveRequestsPage() {
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: `Leave request ${status}` });
+       // The fetchLeaveRequests function selects "*, employees(*, profiles(id,full_name))". 
       if (status === "approved") {
         const lr = leaveRequests.find((x) => x.id === id);
         if (lr) {

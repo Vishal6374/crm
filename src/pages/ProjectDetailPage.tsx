@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Users, ClipboardList, CalendarDays } from "lucide-react";
+import { Plus, Search, Users, ClipboardList, CalendarDays, Eye, Pencil, Trash2, UserPlus, Calendar, Clock, CheckCircle2, Link as LinkIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/use-permissions";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type Project = Tables<"projects">;
 type Employee = Tables<"employees"> & { profiles: Pick<Tables<"profiles">, "id" | "full_name" | "email"> | null };
@@ -24,7 +25,7 @@ type Event = Tables<"project_meetings">;
 type Channel = Tables<"chat_channels">;
 
 export default function ProjectDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const { toast } = useToast();
   const { user } = useAuth();
   const { can, role } = usePermissions();
@@ -63,6 +64,7 @@ export default function ProjectDetailPage() {
   }, [user?.id, toast]);
 
   const fetchAll = useCallback(async () => {
+    if (!id) return;
     setLoading(true);
     const [projRes, memRes, empRes, taskRes, evtRes, chanRes] = await Promise.all([
       supabase.from("projects").select("*").eq("id", id as string).maybeSingle(),
@@ -80,40 +82,43 @@ export default function ProjectDetailPage() {
     setEvents((evtRes.data || []) as Event[]);
     setChannel(chanRes.data || null);
     setLoading(false);
+    
     if (chanRes.data) {
-      await syncChannelParticipants(chanRes.data, membersList);
+       await syncChannelParticipants(chanRes.data, membersList);
     }
   }, [id, syncChannelParticipants]);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
   async function ensureChannel() {
     if (!id) return;
     if (channel?.id) return;
+
     const { data: existing } = await supabase.from("chat_channels").select("*").eq("project_id", id as string).maybeSingle();
     if (existing) {
       setChannel(existing);
       await syncChannelParticipants(existing, members);
       return;
     }
+
     const name = project?.name ? `Project: ${project.name}` : "Project Chat";
     const { data: created, error } = await supabase
       .from("chat_channels")
       .insert([{ project_id: id as string, name, type: "group", created_by: user?.id || "" }])
       .select()
-      .maybeSingle();
+      .single();
+    
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-      return;
-    }
-    if (created) {
+    } else if (created) {
       setChannel(created);
       await syncChannelParticipants(created, members);
       toast({ title: "Project chat created" });
     }
   }
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
   async function addMember(e: React.FormEvent) {
     e.preventDefault();
     if (!id || !newMemberEmployeeId) return;
@@ -121,14 +126,19 @@ export default function ProjectDetailPage() {
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Member added" });
       setDialogOpen(false);
       setNewMemberEmployeeId("");
       fetchAll();
+      if (channel) {
+         // Re-sync participants if channel exists
+         // But fetchAll calls it anyway if we update members. 
+         // However, fetchAll fetches from DB.
+      }
     }
   }
 
   async function removeMember(memberId: string) {
+    if (!confirm("Remove this member?")) return;
     const { error } = await supabase.from("project_members").delete().eq("id", memberId);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -235,7 +245,10 @@ export default function ProjectDetailPage() {
         </TabsList>
         <TabsContent value="chat" className="mt-4">
           {!channel?.id ? (
-            <Button onClick={ensureChannel}>Create Project Chat</Button>
+            <div className="flex flex-col items-center justify-center h-[200px] border rounded-md bg-muted/20">
+              <p className="text-muted-foreground mb-4">Project chat not initialized</p>
+              <Button onClick={ensureChannel}>Create Project Chat</Button>
+            </div>
           ) : (
             <div className="h-[60vh] border rounded-md">
               <ChatWindow channelId={channel.id} />
@@ -243,65 +256,85 @@ export default function ProjectDetailPage() {
           )}
         </TabsContent>
         <TabsContent value="tasks" className="mt-4">
-          <Card>
-            <CardContent className="p-4">
+           <Card>
+            <CardContent className="p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold flex items-center gap-2"><ClipboardList className="h-4 w-4" />Tasks</h2>
+                <h3 className="font-semibold flex items-center gap-2"><ClipboardList className="h-4 w-4" />Tasks</h3>
+                <Dialog>
+                  <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />New Task</Button></DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader><DialogTitle>New Task</DialogTitle></DialogHeader>
+                    <form onSubmit={createTask} className="space-y-4">
+                      <div><Label>Title</Label><Input name="title" required /></div>
+                      <div><Label>Description</Label><Textarea name="description" /></div>
+                      <Button type="submit" className="w-full">Create Task</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
-              <div className="mt-3 flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search tasks..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                {filteredTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No tasks</p>
-                ) : filteredTasks.map((t) => (
-                  <div key={t.id} className="p-2 rounded-md border text-sm">{t.title}</div>
-                ))}
-              </div>
-              <div className="mt-4">
-                <form onSubmit={createTask} className="space-y-2">
-                  <Input name="title" placeholder="New task title" required />
-                  <Textarea name="description" placeholder="Description" />
-                  <Button type="submit" className="w-full"><Plus className="h-4 w-4 mr-1" />Add Task</Button>
-                </form>
+              <div className="space-y-2">
+                 <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Search tasks..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+                  </div>
+                 {filteredTasks.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">No tasks found</p>
+                 ) : (
+                    filteredTasks.map(t => (
+                      <div key={t.id} className="p-3 border rounded-md flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">{t.title}</p>
+                          <p className="text-xs text-muted-foreground">{t.status} • {t.priority}</p>
+                        </div>
+                      </div>
+                    ))
+                 )}
               </div>
             </CardContent>
-          </Card>
+           </Card>
         </TabsContent>
         <TabsContent value="meetings" className="mt-4">
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4" />Meetings</h2>
+            <CardContent className="p-4 space-y-4">
+               <div className="flex items-center justify-between">
+                <h3 className="font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4" />Meetings</h3>
+                {can("calendar", "can_create") && (
+                <Dialog>
+                  <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />Schedule</Button></DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader><DialogTitle>Schedule Meeting</DialogTitle></DialogHeader>
+                    <form onSubmit={scheduleMeeting} className="space-y-4">
+                      <div><Label>Title</Label><Input name="title" required /></div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div><Label>Start</Label><Input type="datetime-local" name="start_time" required /></div>
+                        <div><Label>End</Label><Input type="datetime-local" name="end_time" required /></div>
+                      </div>
+                      <div><Label>Link (optional)</Label><Input name="meeting_link" /></div>
+                      <Button type="submit" className="w-full">Schedule</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+                )}
               </div>
-              <div className="mt-4 space-y-2">
+              <div className="space-y-2">
                 {events.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No meetings scheduled</p>
-                ) : events.map((ev) => (
-                  <div key={ev.id} className="p-2 rounded-md border text-sm">
-                    <div className="font-medium">{ev.title}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(ev.start_time as unknown as string).toLocaleString()} - {new Date(ev.end_time as unknown as string).toLocaleString()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4">
-                {role === "manager" ? (
-                  <form onSubmit={scheduleMeeting} className="space-y-2">
-                    <Input name="title" placeholder="Meeting title" required />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input type="datetime-local" name="start_time" required />
-                      <Input type="datetime-local" name="end_time" required />
-                    </div>
-                    <Input name="meeting_link" placeholder="Meeting link" required />
-                    <Button type="submit" className="w-full"><Plus className="h-4 w-4 mr-1" />Schedule Meeting</Button>
-                  </form>
+                  <p className="text-sm text-muted-foreground text-center py-4">No meetings scheduled</p>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Only project managers can schedule meetings.</p>
+                  events.map(e => (
+                    <div key={e.id} className="p-3 border rounded-md flex justify-between items-center">
+                       <div>
+                          <p className="font-medium">{e.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(e.start_time).toLocaleString()} - {new Date(e.end_time).toLocaleString()}
+                          </p>
+                       </div>
+                       {e.meeting_link && (
+                         <Button variant="ghost" size="sm" asChild>
+                           <a href={e.meeting_link} target="_blank" rel="noopener noreferrer"><LinkIcon className="h-4 w-4" /></a>
+                         </Button>
+                       )}
+                    </div>
+                  ))
                 )}
               </div>
             </CardContent>

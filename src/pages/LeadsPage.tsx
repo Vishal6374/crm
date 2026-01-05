@@ -20,7 +20,7 @@ import * as XLSX from "xlsx";
 export default function LeadsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const [leads, setLeads] = useState<Tables<'leads'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
@@ -51,6 +51,9 @@ export default function LeadsPage() {
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     let query = supabase.from("leads").select("*").order("created_at", { ascending: false });
+    if (orgId) {
+      query = query.eq("organization_id", orgId as string);
+    }
     if (role === "manager" && user?.id) {
       query = query.eq("user_id", user.id);
     } else if (role === "employee" && user?.id) {
@@ -64,7 +67,10 @@ export default function LeadsPage() {
       return;
     }
 
-    const { data: profiles } = await supabase.from("profiles").select("id, full_name");
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", orgId as string);
 
     const joinedLeads = leadsData.map(lead => ({
       ...lead,
@@ -73,18 +79,17 @@ export default function LeadsPage() {
 
     setLeads(joinedLeads);
     setLoading(false);
-  }, [role, user?.id]);
+  }, [role, user?.id, orgId]);
 
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
 
 
-  const filteredLeads = leads.filter((lead) => {
+  const filteredLeads = leads.filter(lead => {
     const matchesSearch = 
       (lead.company_name?.toLowerCase() || lead.title?.toLowerCase() || "").includes(search.toLowerCase()) || 
-      (lead.contact_name?.toLowerCase() || "").includes(search.toLowerCase()) || 
-      (lead.email?.toLowerCase() || "").includes(search.toLowerCase());
+      (lead.contact_name?.toLowerCase() || "").includes(search.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || lead.status === statusFilter;
     const matchesSource = sourceFilter === "all" || lead.source === sourceFilter;
@@ -140,7 +145,11 @@ export default function LeadsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this lead?")) return;
     
-    const { error } = await supabase.from("leads").delete().eq("id", id);
+    let builder = supabase.from("leads").delete().eq("id", id);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { error } = await builder;
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -165,7 +174,7 @@ export default function LeadsPage() {
       toast({ title: "Lead assigned successfully" });
       
       if (userId !== user?.id) {
-         sendDirectMessage(user?.id || "", userId, `You have been assigned to lead #${leadId}`);
+         // sendDirectMessage(user?.id || "", userId, `You have been assigned to lead #${leadId}`);
       }
 
       await supabase.from("activity_logs").insert([{
@@ -181,11 +190,10 @@ export default function LeadsPage() {
   };
 
   const updateLeadStage = async (leadId: string, status: string) => {
-    const prevLeads = [...leads];
     setLeads((ls) => ls.map((l) => (l.id === leadId ? { ...l, status } : l)));
     const { error } = await supabase.from("leads").update({ status }).eq("id", leadId);
     if (error) {
-      setLeads(prevLeads);
+      fetchLeads();
       toast({ title: "Error updating status", description: error.message, variant: "destructive" });
       return;
     }
@@ -207,7 +215,8 @@ export default function LeadsPage() {
       phone: lead.phone,
       notes: `Converted from Lead: ${lead.company_name || lead.title}. \n${lead.notes || ""}`,
       created_by: user?.id,
-      company_id: lead.company_id // If we had this mapped
+      company_id: lead.company_id, // If we had this mapped
+      organization_id: orgId as string,
     }]).select().single();
 
     if (contactError) {
@@ -345,7 +354,8 @@ export default function LeadsPage() {
       };
     });
     if (payloads.length > 0) {
-      const { error } = await supabase.from("leads").insert(payloads);
+      const payloadsWithOrg = payloads.map(p => ({ ...p, organization_id: orgId as string }));
+      const { error } = await supabase.from("leads").insert(payloadsWithOrg);
       if (error) throw error;
     }
   };

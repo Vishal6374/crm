@@ -36,10 +36,10 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [notes, setNotes] = useState("");
   const [addingNote, setAddingNote] = useState(false);
-  const [comments, setComments] = useState<Array<{ id: string; content: string; created_at: string; author_id: string }>>([]);
+  const [comments, setComments] = useState<Array<{ id: string; content: string; created_at: string; author_id: string | null; author?: { full_name: string | null } }>>([]);
   const [commentText, setCommentText] = useState("");
-  const [commentMention, setCommentMention] = useState<string>("");
   const [profiles, setProfiles] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
+  const [commentMention, setCommentMention] = useState<string>("");
 
   const fetchActivities = useCallback(async () => {
     if (!lead) return;
@@ -61,7 +61,7 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
     if (!lead) return;
     const { data } = await supabase
       .from("messages")
-      .select("*")
+      .select("*, author:profiles(full_name)")
       .eq("entity_type", "lead")
       .eq("entity_id", lead.id)
       .order("created_at", { ascending: false });
@@ -78,32 +78,40 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
 
   useEffect(() => {
     if (lead?.id && open) {
-      fetchActivities();
-      fetchComments();
-      fetchProfiles();
+        fetchActivities();
+        fetchComments();
+        fetchProfiles();
     }
   }, [lead?.id, open, fetchActivities, fetchComments, fetchProfiles]);
 
   async function postComment() {
     if (!lead) return;
     const mentions = commentMention ? [commentMention] : [];
+    
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const commentPayload: TablesInsert<'messages'> = {
       entity_type: "lead",
       entity_id: lead.id,
-      author_id: lead.user_id || null,
       content: commentText,
       mentions,
+      author_id: user.id
     };
+
     const { error } = await supabase.from("messages").insert([commentPayload]);
     if (error) return;
+
     const activityPayload: TablesInsert<'activity_logs'> = {
       action: "comment_added",
       entity_type: "lead",
       entity_id: lead.id,
       description: "Comment added to lead",
-      user_id: lead.user_id || null,
+      user_id: user.id,
     };
     await supabase.from("activity_logs").insert([activityPayload]);
+    
     setCommentText("");
     setCommentMention("");
     fetchComments();
@@ -229,6 +237,7 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
                 <div className="text-center py-8 text-muted-foreground">No comments yet.</div>
               ) : comments.map((m) => (
                 <div key={m.id} className="p-2 rounded-md bg-muted/40">
+                  <div className="text-sm font-semibold">{m.author?.full_name || "Unknown User"}</div>
                   <div className="text-sm">{m.content}</div>
                   <div className="text-xs text-muted-foreground">{format(new Date(m.created_at), "MMM d, yyyy h:mm a")}</div>
                 </div>
@@ -241,7 +250,7 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
               <Select value={commentMention} onValueChange={(v) => setCommentMention(v)}>
                 <SelectTrigger><SelectValue placeholder="Select user to mention" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {profiles.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
                   ))}

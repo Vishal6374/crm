@@ -30,7 +30,6 @@ type Task = Tables<"tasks"> & {
   project_id?: string | null
 };
 type ProfileSummary = Pick<Tables<"profiles">, "id" | "full_name" | "email">;
-type LeadSummary = { id: string; title?: string | null; company_name?: string | null };
 type DealSummary = { id: string; title: string; value?: number | null };
 type ProjectSummary = { id: string; name: string };
 
@@ -38,10 +37,10 @@ export default function TasksPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { can, role } = usePermissions();
+  const [leads, setLeads] = useState<{ id: string; company_name: string | null; contact_name: string | null }[]>([]);
   const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
-  const [leads, setLeads] = useState<LeadSummary[]>([]);
   const [deals, setDeals] = useState<DealSummary[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [taskCollaborators, setTaskCollaborators] = useState<Record<string, string[]>>({});
@@ -137,7 +136,6 @@ export default function TasksPage() {
     fetchTasks();
     fetchProfiles();
     fetchLeads();
-    fetchDeals();
     fetchProjects();
   }, [fetchTasks, fetchProfiles, fetchLeads, fetchDeals, fetchProjects]);
 
@@ -539,8 +537,8 @@ export default function TasksPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
               </div>
-            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Project</Label>
@@ -597,7 +595,7 @@ export default function TasksPage() {
             {profiles.map((p) => {
               const initials = (p.full_name || p.email || "U").slice(0, 2).toUpperCase();
               return (
-                <div key={p.id} draggable onDragStart={(e) => e.dataTransfer.setData("userId", p.id)} className="flex items-center gap-2 p-2 rounded-md bg-muted/40">
+                <div key={p.id} className="flex items-center gap-2">
                   <Avatar className="h-6 w-6">
                     <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
                   </Avatar>
@@ -634,7 +632,7 @@ export default function TasksPage() {
                     <p className="text-xs text-muted-foreground text-center py-4">No tasks</p>
                   ) : (
                     colTasks.map((task) => {
-                      const owner = profiles.find((p) => p.id === task.assigned_to);
+                    const assignedProfile = profiles.find(p => p.id === task.assigned_to);
                       const borderClass = priorityBorder[task.priority] || "border-muted";
                       return (
                         <Card
@@ -666,9 +664,16 @@ export default function TasksPage() {
                             <div className="mt-3 flex items-center justify-between gap-3">
                               <div className="text-sm">
                                 {task.assigned_to ? (
-                                  <>Assigned to {owner?.full_name || owner?.email}</>
+                                  (() => {
+                                    const p = profiles.find(u => u.id === task.assigned_to);
+                                    return p ? (
+                                      <span className="text-xs text-muted-foreground">
+                                        Assigned to {p.full_name || p.email}
+                                      </span>
+                                    ) : <span className="text-xs text-muted-foreground">Unknown</span>;
+                                  })()
                                 ) : (
-                                  <>Unassigned</>
+                                  <span className="text-xs text-muted-foreground">Unassigned</span>
                                 )}
                               </div>
                               <div />

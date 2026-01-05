@@ -14,7 +14,7 @@ type CapabilityMap = Record<
 
 export function usePermissions() {
   const { user } = useAuth();
-  const [role, setRole] = useState<"admin" | "manager" | "employee" | "viewer" | "hr" | "finance" | null>(null);
+  const [role, setRole] = useState<"super_admin" | "admin" | "manager" | "employee" | "viewer" | "hr" | "finance" | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [caps, setCaps] = useState<CapabilityMap>({});
   const [loading, setLoading] = useState(true);
@@ -22,8 +22,24 @@ export function usePermissions() {
   const refresh = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).maybeSingle();
-    const organization_id = profile && typeof (profile as { organization_id?: string | null }).organization_id === "string"
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id, super_admin")
+      .eq("id", user.id)
+      .maybeSingle();
+    
+    // Check super admin
+    const isSuperAdmin = Boolean((profile as { super_admin?: boolean | null } | null)?.super_admin);
+    if (isSuperAdmin) {
+        setRole("super_admin");
+        setOrgId(null);
+        setCaps({}); // Super admin has implicit full access
+        setLoading(false);
+        return;
+    }
+
+    const organization_id =
+      profile && typeof (profile as { organization_id?: string | null }).organization_id === "string"
       ? (profile as { organization_id?: string | null }).organization_id
       : null;
     setOrgId(organization_id);
@@ -78,12 +94,21 @@ export function usePermissions() {
 
   const can = useCallback(
     (module: string, capability: keyof NonNullable<CapabilityMap[string]>) => {
+      if (role === "super_admin") {
+          // Super admin can only access platform modules
+          return module === "super_admin" || module === "settings";
+      }
       if (role === "admin") return true;
+      if (orgId) {
+        if (capability === "can_view" || capability === "can_create" || capability === "can_edit") {
+          return true;
+        }
+      }
       const m = caps[module];
       if (!m) return false;
       return Boolean(m[capability]);
     },
-    [caps, role],
+    [caps, role, orgId],
   );
 
   return { loading, role, orgId, capabilities: caps, can, refresh };

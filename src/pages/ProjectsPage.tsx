@@ -16,7 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function ProjectsPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const { user } = useAuth();
   const [projects, setProjects] = useState<Tables<'projects'>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,10 +30,14 @@ export default function ProjectsPage() {
   }, []);
 
   async function fetchProjects() {
-    const { data, error } = await supabase
+    let builder = supabase
       .from("projects")
       .select("*")
       .order("name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data, error } = await builder;
     if (!error) setProjects(data || []);
     setLoading(false);
   }
@@ -47,7 +51,8 @@ export default function ProjectsPage() {
     const { data: created, error } = await supabase.from("projects").insert([{
       name: formData.name,
       description: formData.description || null,
-      owner_id: user?.id || null
+      owner_id: user?.id || null,
+      organization_id: orgId as string,
     }]).select().maybeSingle();
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });

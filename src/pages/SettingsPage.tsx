@@ -93,7 +93,11 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground mt-1">Email cannot be changed</p>
             </div>
             <div>
-              <Label>Full Name</Label>
+              <Input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} placeholder="Your full name" />
+            </div>
+            <div>
+              <Label>Avatar URL</Label>
+              <Input value={profile.avatar_url} onChange={(e) => setProfile({ ...profile, avatar_url: e.target.value })} placeholder="https://example.com/avatar.jpg" />
               <Input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} placeholder="Your full name" />
             </div>
             <div>

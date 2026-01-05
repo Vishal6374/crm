@@ -62,6 +62,10 @@ const adminNavigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
+const superAdminNavigation = [
+  { name: "Organizations", href: "/super-admin", icon: Building2 },
+];
+
 interface AppSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -76,6 +80,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const isActive = (href: string) => location.pathname === href;
 
   const NavItem = ({ item }: { item: typeof navigation[0] }) => (
+    
     <Link
       to={item.href}
       className={cn(
@@ -144,12 +149,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                   };
                   const m = map[item.name] || "";
                   const enabled = m ? isEnabled(m) : true;
-                  const allowed =
-                    item.name === "Dashboard"
-                      ? role !== "employee"
-                      : m
-                      ? can(m, "can_view")
-                      : true;
+                  const allowed = m ? can(m, "can_view") : true;
                   return enabled && allowed;
                 })
                 .map((item) => (
@@ -213,6 +213,22 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 ))}
             </nav>
           </div>
+
+          {/* Super Admin Section */}
+          {role === "super_admin" && (
+            <div>
+              {!collapsed && (
+                <p className="px-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2">
+                  Super Admin
+                </p>
+              )}
+              <nav className="space-y-1">
+                {superAdminNavigation.map((item) => (
+                  <NavItem key={item.name} item={item} />
+                ))}
+              </nav>
+            </div>
+          )}
         </div>
       </ScrollArea>
 

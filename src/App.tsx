@@ -30,7 +30,7 @@ import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import MeetingsPage from "@/pages/MeetingsPage";
 import NotFound from "@/pages/NotFound";
 import { ThemeProvider } from "./components/theme-provider";
-
+import SuperAdminPage from "./pages/SuperAdminPage";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -66,6 +66,7 @@ const App = () => (
               <Route path="user-roles" element={<UserRolesPage />} />
               <Route path="activity-logs" element={<ActivityLogsPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="super-admin" element={<SuperAdminPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

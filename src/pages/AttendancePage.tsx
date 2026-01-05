@@ -25,11 +25,12 @@ const statusColors: Record<string, string> = {
 export default function AttendancePage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const [attendance, setAttendance] = useState<(Database["public"]["Tables"]["attendance"]["Row"] & { employees?: { employee_id: string; profiles?: { full_name: string | null } } })[]>([]);
   const [employees, setEmployees] = useState<{ id: string; employee_id: string; profiles?: { full_name: string | null } }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Database["public"]["Tables"]["attendance"]["Row"] | null>(null);
   const [formData, setFormData] = useState({
@@ -41,19 +42,22 @@ export default function AttendancePage() {
     notes: "",
   });
 
-  useEffect(() => {
-    fetchAttendance();
-    fetchEmployees();
-  }, [fetchAttendance, fetchEmployees]);
+  
 
   const fetchAttendance = useCallback(async () => {
-    const { data: empsData } = await supabase.from("employees").select("id, employee_id, user_id");
+    const { data: empsData } = await supabase
+      .from("employees")
+      .select("id, employee_id, user_id")
+      .eq("organization_id", orgId as string);
     const currentEmpId = (empsData || []).find((e) => e.user_id === user?.id)?.id || null;
     let builder = supabase
       .from("attendance")
       .select("*")
       .order("date", { ascending: false })
       .limit(100);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
     if (role === "employee" && currentEmpId) {
       builder = builder.eq("employee_id", currentEmpId);
     }
@@ -64,7 +68,10 @@ export default function AttendancePage() {
       return;
     }
 
-    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", orgId as string);
 
     const joinedAttendance = attendanceData.map(att => {
       const emp = empsData?.find(e => e.id === att.employee_id);
@@ -80,20 +87,21 @@ export default function AttendancePage() {
 
     setAttendance(joinedAttendance);
     setLoading(false);
-  }, [role, user?.id]);
+  }, [role, user?.id, orgId]);
 
   const fetchEmployees = useCallback(async () => {
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id")
-      .eq("status", "active")
+      .eq("organization_id", orgId as string)
       .order("employee_id");
-    
-    if (!empsData) return;
 
-    const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", orgId as string);
 
-    const joinedEmployees = empsData.map(emp => {
+    const joinedEmployees = (empsData || []).map(emp => {
       const prof = profilesData?.find(p => p.id === emp.user_id);
       return {
         id: emp.id,
@@ -103,8 +111,11 @@ export default function AttendancePage() {
     });
 
     setEmployees(joinedEmployees);
-  }, []);
-
+  }, [orgId]);
+  useEffect(() => {
+    fetchAttendance();
+    fetchEmployees();
+  }, [fetchAttendance, fetchEmployees]);
   async function createAttendance(e: React.FormEvent) {
     e.preventDefault();
     if (editing) {
@@ -147,7 +158,6 @@ export default function AttendancePage() {
     setDialogOpen(false);
     setEditing(null);
     setFormData({ employee_id: "", date: new Date().toISOString().split("T")[0], check_in: "09:00", check_out: "17:00", status: "present", notes: "" });
-    fetchAttendance();
   }
 
   const filteredAttendance = attendance.filter((a) =>

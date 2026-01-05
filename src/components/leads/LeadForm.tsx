@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect } from "react";
 import { Tables } from "@/integrations/supabase/types";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const leadSchema = z.object({
   company_name: z.string().min(1, "Company name is required"),
@@ -37,6 +38,7 @@ interface LeadFormProps {
 export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFormProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { orgId } = usePermissions();
   
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema),
@@ -92,6 +94,7 @@ export function LeadForm({ open, onOpenChange, onSuccess, initialData }: LeadFor
         description: data.notes || null, // Sync description with notes
         value: data.value ? parseFloat(data.value) : 0,
         created_by: user?.id || null,
+        organization_id: orgId as string,
       };
 
       if (initialData?.id) {

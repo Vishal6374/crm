@@ -13,34 +13,33 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type Meeting = Tables<"events">;
 type Project = Tables<"projects">;
+type Profile = Pick<Tables<"profiles">, "id" | "full_name" | "email">;
 
 export default function MeetingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  useEffect(() => {
-    fetchMeetings();
-    fetchProjects();
-  }, [fetchMeetings]);
-
   const fetchMeetings = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("events")
-      .select("*")
-      .eq("type", "meeting")
-      .order("start_time", { ascending: true });
+    const builder = supabase.from("events").select("*").eq("type", "meeting").order("start_time", { ascending: true });
+    const { data, error } = await builder;
     if (error) {
       setMeetings([]);
       setLoading(false);
       return;
     }
     let visible = (data || []) as Meeting[];
+    if (orgId) {
+      const { data: projRows } = await supabase.from("projects").select("id").eq("organization_id", orgId as string);
+      const orgProjectIds = (projRows || []).map((r) => (r as { id: string }).id);
+      visible = visible.filter((m) => Boolean(m.related_id) && orgProjectIds.includes(String(m.related_id)));
+    }
     if (role === "employee" && user?.id) {
       const { data: empRow } = await supabase.from("employees").select("id, user_id").eq("user_id", user.id).maybeSingle();
       if (empRow?.id) {
@@ -53,12 +52,31 @@ export default function MeetingsPage() {
     }
     setMeetings(visible);
     setLoading(false);
-  }, [role, user?.id]);
+  }, [role, user?.id, orgId]);
 
   async function fetchProjects() {
-    const { data } = await supabase.from("projects").select("id, name").order("name");
+    let builder = supabase.from("projects").select("id, name").order("name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     if (data) setProjects(data);
   }
+
+  async function fetchProfiles() {
+    let builder = supabase.from("profiles").select("id, full_name, email").order("full_name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
+    if (data) setProfiles(data as Profile[]);
+  }
+
+  useEffect(() => {
+    fetchMeetings();
+    fetchProjects();
+    fetchProfiles();
+  }, [fetchMeetings]);
 
   async function createMeeting(e: React.FormEvent) {
     e.preventDefault();
@@ -81,7 +99,6 @@ export default function MeetingsPage() {
       toast({ title: "Meeting created" });
       setDialogOpen(false);
       fetchMeetings();
-      form.reset();
     }
   }
 

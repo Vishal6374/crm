@@ -20,7 +20,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 export default function ContactsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const [contacts, setContacts] = useState<(Database["public"]["Tables"]["contacts"]["Row"] & { companies?: { id: string; name: string } })[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,16 +48,24 @@ export default function ContactsPage() {
   }, []);
 
   async function fetchContacts() {
-    const { data, error } = await supabase
+    let builder = supabase
       .from("contacts")
       .select("*, companies(id, name)")
       .order("created_at", { ascending: false });
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data, error } = await builder;
     if (!error) setContacts(data || []);
     setLoading(false);
   }
 
   async function fetchCompanies() {
-    const { data } = await supabase.from("companies").select("id, name").order("name");
+    let builder = supabase.from("companies").select("id, name").order("name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     if (data) setCompanies(data);
   }
 
@@ -99,6 +107,7 @@ export default function ContactsPage() {
         company_id: formData.company_id || null,
         notes: formData.notes,
         created_by: user?.id,
+        organization_id: orgId as string,
       }]);
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
