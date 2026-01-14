@@ -36,7 +36,7 @@ type ProjectSummary = { id: string; name: string };
 export default function TasksPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const [leads, setLeads] = useState<{ id: string; company_name: string | null; contact_name: string | null }[]>([]);
   const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -81,10 +81,15 @@ export default function TasksPage() {
   }, []);
 
   const fetchTasks = useCallback(async () => {
+    if (!orgId) return;
     let builder = supabase
       .from("tasks")
       .select("*")
       .order("created_at", { ascending: false });
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    builder = builder.is("project_id", null);
     if (role === "employee") {
       builder = builder.eq("assigned_to", user?.id || "");
     }
@@ -96,41 +101,61 @@ export default function TasksPage() {
     } else {
       setTaskCollaborators({});
     }
-  }, [fetchTaskCollaborators, role, user?.id]);
+  }, [fetchTaskCollaborators, role, user?.id, orgId]);
 
   const fetchProfiles = useCallback(async () => {
-    const { data } = await supabase
+    if (!orgId) return;
+    let builder = supabase
       .from("profiles")
       .select("id, full_name, email")
       .order("full_name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     if (data) setProfiles(data);
-  }, []);
+  }, [orgId]);
 
   const fetchLeads = useCallback(async () => {
-    const { data } = await supabase
+    if (!orgId) return;
+    let builder = supabase
       .from("leads")
       .select("id, title, company_name")
       .order("created_at", { ascending: false })
       .limit(100);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     if (data) setLeads(data);
-  }, []);
+  }, [orgId]);
 
   const fetchDeals = useCallback(async () => {
-    const { data } = await supabase
+    if (!orgId) return;
+    let builder = supabase
       .from("deals")
       .select("id, title, value")
       .order("created_at", { ascending: false })
       .limit(100);
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     if (data) setDeals(data);
-  }, []);
+  }, [orgId]);
 
   const fetchProjects = useCallback(async () => {
-    const { data } = await supabase
+    if (!orgId) return;
+    let builder = supabase
       .from("projects")
       .select("id, name")
       .order("name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     if (data) setProjects(data as ProjectSummary[]);
-  }, []);
+  }, [orgId]);
 
   useEffect(() => {
     fetchTasks();
@@ -156,6 +181,7 @@ export default function TasksPage() {
       deal_id: formData.deal_id || null,
       project_id: formData.project_id || null,
       created_by: user?.id,
+      organization_id: orgId as string,
     }]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -232,6 +258,7 @@ export default function TasksPage() {
         entity_id: taskId,
         description: "Task owner reassigned",
         user_id: user?.id || null,
+        organization_id: orgId as string,
       }]);
       toast({ title: "Task reassigned" });
       fetchTasks();
@@ -258,6 +285,7 @@ export default function TasksPage() {
       entity_id: task.id,
       description: "Task marked in progress",
       user_id: user?.id || null,
+      organization_id: orgId as string,
     }]);
     fetchTasks();
   }
@@ -294,6 +322,7 @@ export default function TasksPage() {
       entity_id: task.id,
       description: "Task marked completed",
       user_id: user?.id || null,
+      organization_id: orgId as string,
     }]);
     fetchTasks();
   }
@@ -329,6 +358,7 @@ export default function TasksPage() {
       entity_id: taskId,
       description: "Comment added to task",
       user_id: user?.id || null,
+      organization_id: orgId as string,
     }]);
     setCommentText("");
     setCommentMention("");
@@ -351,6 +381,7 @@ export default function TasksPage() {
         entity_id: taskId,
         description: "Collaborator added to task",
         user_id: user?.id || null,
+        organization_id: orgId as string,
       }]);
       toast({ title: "Collaborator added" });
     }
@@ -374,6 +405,7 @@ export default function TasksPage() {
         entity_id: taskId,
         description: "Collaborator removed from task",
         user_id: user?.id || null,
+        organization_id: orgId as string,
       }]);
       toast({ title: "Collaborator removed" });
     }
@@ -435,6 +467,7 @@ export default function TasksPage() {
         entity_id: taskId,
         description: `Task moved to ${status}`,
         user_id: user?.id || null,
+        organization_id: orgId as string,
       }]);
       fetchTasks();
     }
@@ -454,6 +487,7 @@ export default function TasksPage() {
         entity_id: id,
         description: "Task deleted",
         user_id: user?.id || null,
+        organization_id: orgId as string,
       }]);
       toast({ title: "Task deleted" });
       fetchTasks();

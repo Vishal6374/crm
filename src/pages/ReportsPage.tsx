@@ -8,7 +8,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 const COLORS = ["hsl(var(--primary))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(var(--destructive))", "hsl(var(--info))"];
 
 export default function ReportsPage() {
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const [stats, setStats] = useState({
     totalEmployees: 0,
     activeEmployees: 0,
@@ -25,15 +25,16 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchReportData();
-  }, []);
+    if (orgId) fetchReportData();
+  }, [orgId]);
 
   async function fetchReportData() {
+    if (!orgId) return;
     const [employeesRes, leadsRes, dealsRes, payrollRes] = await Promise.all([
-      supabase.from("employees").select("status"),
-      supabase.from("leads").select("status, value"),
-      supabase.from("deals").select("stage, value"),
-      supabase.from("payroll").select("month, year, net_salary, status"),
+      supabase.from("employees").select("status").eq("organization_id", orgId),
+      supabase.from("leads").select("status, value").eq("organization_id", orgId),
+      supabase.from("deals").select("stage, value").eq("organization_id", orgId),
+      supabase.from("payroll").select("month, year, net_salary, status").eq("organization_id", orgId),
     ]);
 
     const employees = employeesRes.data || [];

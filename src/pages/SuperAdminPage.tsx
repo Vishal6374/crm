@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, Building2, Settings, Users, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -48,32 +48,31 @@ export default function SuperAdminPage() {
   const [adminEmail, setAdminEmail] = useState("");
   const [addingAdmin, setAddingAdmin] = useState(false);
 
-  useEffect(() => {
-    fetchOrgs();
-  }, []);
 
-  async function fetchOrgs() {
+
+  const fetchOrgs = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from("organizations" as any)
+        .from("organizations")
         .select("*")
         .order("created_at", { ascending: false });
       
       if (error) throw error;
-      setOrgs(data || []);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setOrgs((data || []) as Organization[]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }
+  }, [toast]);
 
   async function createOrg() {
     if (!newOrgName.trim()) return;
     setCreating(true);
     try {
       const { data, error } = await supabase
-        .from("organizations" as any)
+        .from("organizations")
         .insert([{ name: newOrgName }])
         .select()
         .single();
@@ -81,11 +80,12 @@ export default function SuperAdminPage() {
       if (error) throw error;
 
       toast({ title: "Organization created" });
-      setOrgs([data, ...orgs]);
+      setOrgs([data as Organization, ...orgs]);
       setCreateDialogOpen(false);
       setNewOrgName("");
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setCreating(false);
     }
@@ -96,7 +96,7 @@ export default function SuperAdminPage() {
     setModulesDialogOpen(true);
     try {
       const { data, error } = await supabase
-        .from("tenant_modules" as any)
+        .from("tenant_modules")
         .select("module_name, enabled")
         .eq("organization_id", org.id);
       
@@ -106,15 +106,19 @@ export default function SuperAdminPage() {
       // Initialize all modules as false first
       Object.values(MODULES).flat().forEach(m => map[m] = false);
       // Update with fetched data
-      (data || []).forEach((row: any) => {
-        map[row.module_name] = row.enabled;
+      (data || []).forEach((row) => {
+        const r = row as { module_name: string; enabled: boolean };
+        map[r.module_name] = r.enabled;
       });
       setOrgModules(map);
-    } catch (error: any) {
-      toast({ title: "Error loading modules", description: error.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast({ title: "Error loading modules", description: message, variant: "destructive" });
     }
   }
-
+    useEffect(() => {
+    fetchOrgs();
+  }, [fetchOrgs]);
   async function toggleModule(module: string) {
     if (!selectedOrg) return;
     
@@ -123,7 +127,7 @@ export default function SuperAdminPage() {
 
     try {
       const { error } = await supabase
-        .from("tenant_modules" as any)
+        .from("tenant_modules")
         .upsert({
           organization_id: selectedOrg.id,
           module_name: module,
@@ -131,8 +135,9 @@ export default function SuperAdminPage() {
         }, { onConflict: "organization_id,module_name" });
 
       if (error) throw error;
-    } catch (error: any) {
-      toast({ title: "Error updating module", description: error.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast({ title: "Error updating module", description: message, variant: "destructive" });
       // Revert on error
       setOrgModules(prev => ({ ...prev, [module]: !newValue }));
     }
@@ -163,34 +168,51 @@ export default function SuperAdminPage() {
 
       const userId = profiles[0].id;
 
-      // 2. Update profile organization_id
-      const { error: updateError } = await supabase
+      // 2. Update all existing user_roles records for this user to new org + tenant_admin
+      const { error: updateAllRolesError } = await supabase
+        .from("user_roles")
+        .update({
+          organization_id: selectedOrg.id,
+          role: "tenant_admin",
+        })
+        .eq("user_id", userId);
+      if (updateAllRolesError) {
+        // If no rows existed, insert one canonical row
+        const { error: insertRoleError } = await supabase
+          .from("user_roles")
+          .insert({
+            user_id: userId,
+            organization_id: selectedOrg.id,
+            role: "tenant_admin",
+          });
+        if (insertRoleError) throw insertRoleError;
+      }
+
+      // 3. Update profile to reflect new organization
+      const { error: profileOrgError } = await supabase
         .from("profiles")
         .update({ organization_id: selectedOrg.id })
         .eq("id", userId);
+        
+      if (profileOrgError) throw profileOrgError;
 
-      if (updateError) throw updateError;
-
-      // 3. Add to user_roles
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: userId,
-          organization_id: selectedOrg.id,
-          role: "tenant_admin"
-        });
-      
-      if (roleError) {
-        // Ignore unique violation if already exists
-        if (!roleError.message.includes("duplicate key")) {
-          throw roleError;
-        }
+      // 4. Move employee record (if exists) to the selected organization
+      const { error: employeeUpdateError } = await supabase
+        .from("employees")
+        .update({ organization_id: selectedOrg.id })
+        .eq("user_id", userId);
+      if (employeeUpdateError) {
+        // Do not throw; employee may not exist yet
       }
+
+      // Note: user_roles drives effective role across the app.
+      // Profiles.role is not part of the current schema; avoid updating non-existent column.
 
       toast({ title: "Admin added successfully" });
       setAdminDialogOpen(false);
-    } catch (error: any) {
-      toast({ title: "Error adding admin", description: error.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast({ title: "Error adding admin", description: message, variant: "destructive" });
     } finally {
       setAddingAdmin(false);
     }
@@ -217,7 +239,10 @@ export default function SuperAdminPage() {
               <Button><Plus className="mr-2 h-4 w-4" />New Organization</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Create Organization</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>Create Organization</DialogTitle>
+                <DialogDescription>Create a new tenant organization.</DialogDescription>
+              </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>Organization Name</Label>
@@ -301,7 +326,10 @@ export default function SuperAdminPage() {
 
       <Dialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Tenant Admin - {selectedOrg?.name}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add Tenant Admin - {selectedOrg?.name}</DialogTitle>
+            <DialogDescription>Assign the selected user as tenant admin for this organization.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>User Email</Label>

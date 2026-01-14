@@ -37,8 +37,8 @@ export default function CompaniesPage() {
   });
 
   useEffect(() => {
-    fetchCompanies();
-  }, []);
+    if (orgId) fetchCompanies();
+  }, [orgId]);
 
   async function fetchCompanies() {
     let builder = supabase.from("companies").select("*").order("created_at", { ascending: false });

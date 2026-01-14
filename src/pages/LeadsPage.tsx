@@ -49,6 +49,10 @@ export default function LeadsPage() {
   const [importFile, setImportFile] = useState<File | null>(null);
 
   const fetchLeads = useCallback(async () => {
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     let query = supabase.from("leads").select("*").order("created_at", { ascending: false });
     if (orgId) {
@@ -82,8 +86,8 @@ export default function LeadsPage() {
   }, [role, user?.id, orgId]);
 
   useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
+    if (orgId) fetchLeads();
+  }, [fetchLeads, orgId]);
 
 
   const filteredLeads = leads.filter(lead => {
@@ -159,6 +163,7 @@ export default function LeadsPage() {
         entity_id: id,
         description: "Deleted lead",
         user_id: user?.id,
+        organization_id: orgId as string,
       }]);
       toast({ title: "Lead deleted successfully" });
       fetchLeads();
@@ -182,7 +187,8 @@ export default function LeadsPage() {
         entity_type: "lead",
         entity_id: leadId,
         description: `Lead assigned to user ${userId}`,
-        user_id: user?.id
+        user_id: user?.id,
+        organization_id: orgId as string,
       }]);
       
       fetchLeads();
@@ -202,7 +208,8 @@ export default function LeadsPage() {
       entity_type: "lead",
       entity_id: leadId,
       description: `Lead moved to ${status}`,
-      user_id: user?.id || null
+      user_id: user?.id || null,
+      organization_id: orgId as string,
     }]);
   };
 
@@ -233,7 +240,8 @@ export default function LeadsPage() {
       entity_type: "lead",
       entity_id: lead.id,
       description: `Lead converted to contact #${contact.id}`,
-      user_id: user?.id
+      user_id: user?.id,
+      organization_id: orgId as string,
     }]);
 
     toast({ title: "Lead converted to contact successfully" });

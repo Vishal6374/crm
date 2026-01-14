@@ -240,6 +240,7 @@
   - Triggers for assignment, task creation, deal creation, chat messages; only relevant users notified.
 - Current
   - Notifications table linked to projects; some triggers present [notifications_triggers.sql](file:///c:/Users/Hi/crm/supabase/migrations/20251231001000_notifications_triggers.sql).
+  - RPC to invite users to organization via notification [invite_user_to_org.sql](file:///c:/Users/Hi/crm/supabase/migrations/20260106100000_invite_user_to_org.sql).
 - Gap
   - Coverage incomplete for all specified events; PBAC alignment missing.
 - Actions
@@ -260,6 +261,21 @@
   - Projects visibility policy implemented “creator or member within org” [permissions_visibility_updates.sql](file:///c:/Users/Hi/crm/supabase/migrations/20251231120000_permissions_visibility_updates.sql#L58-L71).
   - Fixed RLS recursion by simplifying project_members SELECT policy [20251231140000_fix_projects_rls_recursion.sql](file:///c:/Users/Hi/crm/supabase/migrations/20251231140000_fix_projects_rls_recursion.sql).
   - Chat RLS hardened via security definer functions [fix_chat_rls.sql](file:///c:/Users/Hi/crm/supabase/migrations/20251230000002_fix_chat_rls.sql).
+
+**Remaining Work**
+- Enforce assignment-based RLS for Leads and Deals, including manager visibility.
+- Implement lead qualification conversion: auto-create company/contact and convert to deal.
+- Restrict Employees/Departments/Designations modules to HR and Tenant Admin at DB level.
+- Add reschedule restriction for employees in calendar (UI + policy).
+- Ensure project chat auto-adds all members at project creation and on later joins.
+- Verify project tasks are isolated from global tasks across UI and queries.
+- Require meeting link/time for project meetings; add constraints and UI validation.
+- Implement HR workflows: payroll draft→approve/reject with cloning; HR/tenant admin approvals for leave.
+- Add activity log retention (latest 500 per tenant) and role-scoped visibility.
+- Expand notifications to cover assignment, task creation, deal creation, chat messages with relevance filtering.
+- Build Email module (templates, variables, bulk send) with APIs and PBAC.
+- Tighten reports visibility to Tenant Admin-only and ensure read-only behavior.
+- Harden PBAC usage across frontend components and routes using role_capabilities.
 
 **Action Plan**
 - Short Term

@@ -25,11 +25,14 @@ export default function DesignationsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchDesignations();
-    fetchDepartments();
-  }, []);
+    if (orgId) {
+      fetchDesignations();
+      fetchDepartments();
+    }
+  }, [orgId]);
 
   async function fetchDesignations() {
+    if (!orgId) return;
     let builder = supabase.from("designations").select("*, departments(name)").order("title");
     if (orgId) {
       builder = builder.eq("organization_id", orgId as string);
@@ -40,6 +43,7 @@ export default function DesignationsPage() {
   }
 
   async function fetchDepartments() {
+    if (!orgId) return;
     let builder = supabase.from("departments").select("id, name").order("name");
     if (orgId) {
       builder = builder.eq("organization_id", orgId as string);

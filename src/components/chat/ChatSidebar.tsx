@@ -32,7 +32,7 @@ type UserProfile = Tables<'profiles'>;
 export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const [channels, setChannels] = useState<ChannelWithParticipants[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [search, setSearch] = useState("");
@@ -40,11 +40,12 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
   const [newChannelName, setNewChannelName] = useState("");
 
   const fetchChannels = useCallback(async () => {
-    if (!user) return;
+    if (!user || !orgId) return;
     const { data: participantData, error: participantError } = await supabase
       .from('chat_participants')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .eq('organization_id', orgId);
 
     if (participantError) {
       console.error('Error fetching participants:', participantError);
@@ -64,6 +65,7 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
       .from('chat_channels')
       .select('*')
       .in('id', channelIds)
+      .eq('organization_id', orgId)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -106,20 +108,25 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
       );
       setChannels(enrichedChannels);
     }
-  }, [user, toast]);
+  }, [user, toast, orgId]);
 
   const fetchUsers = useCallback(async () => {
-    if (!user) return;
-    const { data, error } = await supabase.from('profiles').select('id, full_name, email').neq('id', user.id);
+    if (!user || !orgId) return;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .neq('id', user.id)
+      .eq('organization_id', orgId);
+
     if (error) {
       console.error('Error fetching users:', error);
       toast({ title: "Error fetching users", description: error.message, variant: "destructive" });
     }
     setUsers(data || []);
-  }, [user, toast]);
+  }, [user, toast, orgId]);
 
   useEffect(() => {
-    if (user) {
+    if (user && orgId) {
       fetchChannels();
       fetchUsers();
 
@@ -134,14 +141,19 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
         supabase.removeChannel(channelSubscription);
       };
     }
-  }, [user, fetchChannels, fetchUsers]);
+  }, [user, orgId, fetchChannels, fetchUsers]);
 
   async function createGroupChannel() {
-    if (!newChannelName.trim() || !user || !can("chat", "can_create")) return;
+    if (!newChannelName.trim() || !user || !orgId || !can("chat", "can_create")) return;
 
     const { data, error } = await supabase
       .from('chat_channels')
-      .insert({ type: 'group', name: newChannelName, created_by: user.id } satisfies TablesInsert<'chat_channels'>)
+      .insert({ 
+        type: 'group', 
+        name: newChannelName, 
+        created_by: user.id,
+        organization_id: orgId
+      } satisfies TablesInsert<'chat_channels'>)
       .select()
       .single();
 
@@ -157,7 +169,7 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
   }
 
   async function startDM(otherUserId: string) {
-    if (!user || !can("chat", "can_create")) return;
+    if (!user || !orgId || !can("chat", "can_create")) return;
     const existingChannel = channels.find(c => c.type === 'direct' && c.otherUserId === otherUserId);
     if (existingChannel) {
       onSelectChannel(existingChannel.id);
@@ -167,7 +179,11 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
 
     const { data, error } = await supabase
       .from('chat_channels')
-      .insert({ type: 'direct', created_by: user.id } satisfies TablesInsert<'chat_channels'>)
+      .insert({ 
+        type: 'direct', 
+        created_by: user.id,
+        organization_id: orgId
+      } satisfies TablesInsert<'chat_channels'>)
       .select()
       .single();
 
@@ -180,7 +196,11 @@ export function ChatSidebar({ onSelectChannel, selectedChannelId }: ChatSidebarP
       const inserted = data as Tables<'chat_channels'>;
       await supabase
         .from('chat_participants')
-        .insert([{ channel_id: inserted.id, user_id: otherUserId }] satisfies TablesInsert<'chat_participants'>[]);
+        .insert([{ 
+          channel_id: inserted.id, 
+          user_id: otherUserId,
+          organization_id: orgId
+        }] satisfies TablesInsert<'chat_participants'>[]);
 
       setIsDialogOpen(false);
       fetchChannels();

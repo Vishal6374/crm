@@ -18,15 +18,17 @@ const actionColors: Record<string, string> = {
 
 export default function ActivityLogsPage() {
   const { user } = useAuth();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const [logs, setLogs] = useState<(Database["public"]["Tables"]["activity_logs"]["Row"] & { profiles?: { full_name: string | null; email: string | null } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   const fetchLogs = useCallback(async () => {
+    if (!orgId) return;
     let builder = supabase
       .from("activity_logs")
       .select("*")
+      .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(100);
     if (role === "employee" && user?.id) {
@@ -39,7 +41,7 @@ export default function ActivityLogsPage() {
       return;
     }
 
-    const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email");
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email").eq("organization_id", orgId);
 
     const joinedLogs = logsData.map(log => ({
       ...log,
@@ -48,11 +50,11 @@ export default function ActivityLogsPage() {
 
     setLogs(joinedLogs);
     setLoading(false);
-  }, [role, user?.id]);
+  }, [role, user?.id, orgId]);
 
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    if (orgId) fetchLogs();
+  }, [fetchLogs, orgId]);
 
   const filteredLogs = logs.filter((log) =>
     log.action.toLowerCase().includes(search.toLowerCase()) ||

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 export default function DepartmentsPage() {
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, orgId } = usePermissions();
   const [departments, setDepartments] = useState<(Tables<'departments'> & { employees: { count: number }[] })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -22,26 +22,34 @@ export default function DepartmentsPage() {
   const [formData, setFormData] = useState({ name: "", description: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchDepartments();
-  }, []);
 
-  async function fetchDepartments() {
+
+  const fetchDepartments = useCallback(async () => {
+    if (!orgId) return;
     const { data, error } = await supabase
       .from("departments")
       .select("*, employees(count)")
+      .eq("organization_id", orgId)
       .order("name");
     if (!error) setDepartments(data || []);
     setLoading(false);
-  }
-
+  }, [orgId]);
+  useEffect(() => {
+    if (orgId) fetchDepartments();
+  }, [orgId, fetchDepartments]);
   async function createDepartment(e: React.FormEvent) {
     e.preventDefault();
     if (!can("departments", "can_create")) {
       toast({ title: "Not allowed", description: "You do not have permission to create departments.", variant: "destructive" });
       return;
     }
-    const { error } = await supabase.from("departments").insert([formData] as Database['public']['Tables']['departments']['Insert'][]);
+    if (!orgId) {
+      toast({ title: "Invalid context", description: "No organization selected.", variant: "destructive" });
+      return;
+    }
+    const { error } = await supabase.from("departments").insert(
+      [{ ...formData, organization_id: orgId }] as Database['public']['Tables']['departments']['Insert'][]
+    );
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -60,7 +68,8 @@ export default function DepartmentsPage() {
       toast({ title: "Not allowed", description: "You do not have permission to edit departments.", variant: "destructive" });
       return;
     }
-    const { error } = await supabase.from("departments").update(formData).eq("id", editingId);
+    if (!orgId) return;
+    const { error } = await supabase.from("departments").update(formData).eq("id", editingId).eq("organization_id", orgId);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -77,7 +86,8 @@ export default function DepartmentsPage() {
       toast({ title: "Not allowed", description: "You do not have permission to delete departments.", variant: "destructive" });
       return;
     }
-    const { error } = await supabase.from("departments").delete().eq("id", id);
+    if (!orgId) return;
+    const { error } = await supabase.from("departments").delete().eq("id", id).eq("organization_id", orgId);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {

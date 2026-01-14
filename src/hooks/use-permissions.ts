@@ -95,8 +95,8 @@ export function usePermissions() {
   const can = useCallback(
     (module: string, capability: keyof NonNullable<CapabilityMap[string]>) => {
       if (role === "super_admin") {
-          // Super admin can only access platform modules
-          return module === "super_admin" || module === "settings";
+          // Super admin has full access to everything
+          return true;
       }
       if (role === "admin") return true;
       if (orgId) {

@@ -43,9 +43,11 @@ export default function ContactsPage() {
   });
 
   useEffect(() => {
-    fetchContacts();
-    fetchCompanies();
-  }, []);
+    if (orgId) {
+      fetchContacts();
+      fetchCompanies();
+    }
+  }, [orgId]);
 
   async function fetchContacts() {
     let builder = supabase

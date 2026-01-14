@@ -71,7 +71,7 @@ function StatCard({ title, value, change, trend, icon }: StatCardProps) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { role, can } = usePermissions();
+  const { role, can, orgId } = usePermissions();
   const [stats, setStats] = useState({
     leads: 0,
     deals: 0,
@@ -85,6 +85,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetchStats() {
+      if (!orgId) {
+        setLoading(false);
+        return;
+      }
       try {
         const today = new Date();
         const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
@@ -99,30 +103,52 @@ export default function DashboardPage() {
 
         const [leadsRes, dealsRes, employeesRes, tasksRes, revenueDealsRes, weekTasksRes] = await Promise.all([
           canViewLeads
-            ? supabase.from("leads").select("id", { count: "exact", head: true })
+            ? (orgId
+                ? supabase.from("leads").select("id", { count: "exact", head: true }).eq("organization_id", orgId as string)
+                : supabase.from("leads").select("id", { count: "exact", head: true }))
             : Promise.resolve({ count: 0 } as { count: number }),
           canViewDeals
-            ? supabase.from("deals").select("id, stage, value", { count: "exact" })
+            ? (orgId
+                ? supabase.from("deals").select("id, stage, value", { count: "exact" }).eq("organization_id", orgId as string)
+                : supabase.from("deals").select("id, stage, value", { count: "exact" }))
             : Promise.resolve({ count: 0, data: [] } as { count: number; data: Tables<"deals">[] }),
           canViewEmployees
-            ? supabase.from("employees").select("id", { count: "exact", head: true })
+            ? (orgId
+                ? supabase.from("employees").select("id", { count: "exact", head: true }).eq("organization_id", orgId as string)
+                : supabase.from("employees").select("id", { count: "exact", head: true }))
             : Promise.resolve({ count: 0 } as { count: number }),
           canViewTasks
-            ? supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed")
+            ? (orgId
+                ? supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed").eq("organization_id", orgId as string)
+                : supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"))
             : Promise.resolve({ count: 0 } as { count: number }),
           canViewReports
-            ? supabase
-                .from("deals")
-                .select("value, created_at")
-                .eq("stage", "closed_won")
-                .gte("created_at", sixMonthsAgo.toISOString())
+            ? (orgId
+                ? supabase
+                    .from("deals")
+                    .select("value, created_at")
+                    .eq("stage", "closed_won")
+                    .gte("created_at", sixMonthsAgo.toISOString())
+                    .eq("organization_id", orgId as string)
+                : supabase
+                    .from("deals")
+                    .select("value, created_at")
+                    .eq("stage", "closed_won")
+                    .gte("created_at", sixMonthsAgo.toISOString()))
             : Promise.resolve({ data: [] } as { data: Pick<Tables<"deals">, "value" | "created_at">[] }),
           canViewTasks
-            ? supabase
-                .from("tasks")
-                .select("status, due_date")
-                .gte("due_date", startOfCurrentWeek.toISOString())
-                .lte("due_date", endOfCurrentWeek.toISOString())
+            ? (orgId
+                ? supabase
+                    .from("tasks")
+                    .select("status, due_date")
+                    .gte("due_date", startOfCurrentWeek.toISOString())
+                    .lte("due_date", endOfCurrentWeek.toISOString())
+                    .eq("organization_id", orgId as string)
+                : supabase
+                    .from("tasks")
+                    .select("status, due_date")
+                    .gte("due_date", startOfCurrentWeek.toISOString())
+                    .lte("due_date", endOfCurrentWeek.toISOString()))
             : Promise.resolve({ data: [] } as { data: Pick<Tables<"tasks">, "status" | "due_date">[] })
         ]);
 
@@ -201,7 +227,7 @@ export default function DashboardPage() {
     }
 
     fetchStats();
-  }, [can]);
+  }, [can, orgId]);
 
   const greeting = () => {
     const hour = new Date().getHours();

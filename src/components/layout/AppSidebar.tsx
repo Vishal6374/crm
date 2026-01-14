@@ -31,6 +31,7 @@ import {
   Activity,
   MessageSquare,
   Folder,
+  Mail,
 } from "lucide-react";
 
 const navigation = [
@@ -58,6 +59,7 @@ const adminNavigation = [
   { name: "Departments", href: "/departments", icon: Building },
   { name: "Designations", href: "/designations", icon: FileText },
   { name: "User Roles", href: "/user-roles", icon: Shield },
+  { name: "Email Marketing", href: "/email", icon: Mail },
   { name: "Activity Logs", href: "/activity-logs", icon: Activity },
   { name: "Settings", href: "/settings", icon: Settings },
 ];

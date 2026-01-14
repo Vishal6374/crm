@@ -82,6 +82,7 @@ export default function PayrollPage() {
 
 
   const fetchPayroll = useCallback(async () => {
+    if (!orgId) return;
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id, salary")

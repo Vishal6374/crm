@@ -45,6 +45,7 @@ export default function AttendancePage() {
   
 
   const fetchAttendance = useCallback(async () => {
+    if (!orgId) return;
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id")
@@ -90,6 +91,7 @@ export default function AttendancePage() {
   }, [role, user?.id, orgId]);
 
   const fetchEmployees = useCallback(async () => {
+    if (!orgId) return;
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id")
@@ -113,9 +115,11 @@ export default function AttendancePage() {
     setEmployees(joinedEmployees);
   }, [orgId]);
   useEffect(() => {
-    fetchAttendance();
-    fetchEmployees();
-  }, [fetchAttendance, fetchEmployees]);
+    if (orgId) {
+      fetchAttendance();
+      fetchEmployees();
+    }
+  }, [fetchAttendance, fetchEmployees, orgId]);
   async function createAttendance(e: React.FormEvent) {
     e.preventDefault();
     if (editing) {

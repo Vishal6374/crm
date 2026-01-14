@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmployeeDetailsSheet, EmployeeWithDetails } from "@/components/employees/EmployeeDetailsSheet";
-import { Tables } from "@/integrations/supabase/types";
+import { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -47,6 +47,10 @@ export default function EmployeesPage() {
   });
 
   const fetchEmployees = useCallback(async () => {
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
     const { data: employeesData, error } = await supabase
       .from("employees")
       .select("*")
@@ -80,16 +84,19 @@ export default function EmployeesPage() {
   }, [toast, role, user?.id, orgId]);
 
   const fetchDepartments = useCallback(async () => {
+    if (!orgId) return;
     const { data } = await supabase.from("departments").select("id, name").eq("organization_id", orgId as string).order("name");
     if (data) setDepartments(data);
   }, [orgId]);
 
   const fetchDesignations = useCallback(async () => {
+    if (!orgId) return;
     const { data } = await supabase.from("designations").select("id, title").eq("organization_id", orgId as string).order("title");
     if (data) setDesignations(data);
   }, [orgId]);
 
   const fetchProfiles = useCallback(async () => {
+    if (!orgId) return;
     const { data } = await supabase.from("profiles").select("id, full_name, email").eq("organization_id", orgId as string).order("full_name");
     if (data) setProfiles(data);
   }, [orgId]);
@@ -107,8 +114,7 @@ export default function EmployeesPage() {
       toast({ title: "Not allowed", description: "You do not have permission to add employees.", variant: "destructive" });
       return;
     }
-    const { error } = await supabase.from("employees").insert([{
-      employee_id: formData.employee_id,
+    const payload: Partial<TablesInsert<'employees'>> = {
       user_id: formData.user_id || null,
       department_id: formData.department_id || null,
       designation_id: formData.designation_id || null,
@@ -117,7 +123,12 @@ export default function EmployeesPage() {
       salary: parseFloat(formData.salary) || 0,
       hire_date: formData.hire_date,
       status: formData.status as "active" | "inactive" | "terminated",
-    }]);
+      organization_id: orgId as string,
+    };
+    if (formData.employee_id && formData.employee_id.trim().length > 0) {
+      payload.employee_id = formData.employee_id.trim();
+    }
+    const { error } = await supabase.from("employees").insert([payload]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -151,7 +162,15 @@ export default function EmployeesPage() {
             <DialogHeader><DialogTitle>Add New Employee</DialogTitle></DialogHeader>
             <form onSubmit={createEmployee} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><Label>Employee ID</Label><Input value={formData.employee_id} onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })} placeholder="EMP001" required /></div>
+                <div>
+                  <Label>Employee ID</Label>
+                  <Input
+                    value={formData.employee_id}
+                    onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
+                    placeholder="Auto-generated"
+                    disabled
+                  />
+                </div>
                 <div>
                   <Label>Link to User</Label>
                   <Select value={formData.user_id} onValueChange={(v) => setFormData({ ...formData, user_id: v })}>

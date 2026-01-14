@@ -19,7 +19,7 @@ const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function CalendarPage() {
   const { user } = useAuth();
-  const { can, role } = usePermissions();
+  const { can, role, orgId } = usePermissions();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<Database["public"]["Tables"]["tasks"]["Row"][]>([]);
@@ -31,6 +31,7 @@ export default function CalendarPage() {
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
 
   const fetchData = useCallback(async () => {
+    if (!orgId) return;
     const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
 
@@ -39,18 +40,35 @@ export default function CalendarPage() {
       .select("*")
       .gte("due_date", startOfMonth.toISOString())
       .lte("due_date", endOfMonth.toISOString());
+    if (orgId) {
+      tasksQuery = tasksQuery.eq("organization_id", orgId as string);
+    }
     if (role === "employee") {
       tasksQuery = tasksQuery.eq("assigned_to", user?.id || "");
     }
+    const leaveQuery = orgId
+      ? supabase
+          .from("leave_requests")
+          .select("*")
+          .gte("start_date", startOfMonth.toISOString().split("T")[0])
+          .lte("end_date", endOfMonth.toISOString().split("T")[0])
+          .eq("organization_id", orgId as string)
+      : supabase
+          .from("leave_requests")
+          .select("*")
+          .gte("start_date", startOfMonth.toISOString().split("T")[0])
+          .lte("end_date", endOfMonth.toISOString().split("T")[0]);
+    const empQuery = orgId
+      ? supabase.from("employees").select("id, user_id").eq("organization_id", orgId as string)
+      : supabase.from("employees").select("id, user_id");
+    const profQuery = orgId
+      ? supabase.from("profiles").select("id, full_name").eq("organization_id", orgId as string)
+      : supabase.from("profiles").select("id, full_name");
     const [tasksRes, leaveRes, empRes, profRes] = await Promise.all([
       tasksQuery,
-      supabase
-        .from("leave_requests")
-        .select("*")
-        .gte("start_date", startOfMonth.toISOString().split("T")[0])
-        .lte("end_date", endOfMonth.toISOString().split("T")[0]),
-      supabase.from("employees").select("id, user_id"),
-      supabase.from("profiles").select("id, full_name"),
+      leaveQuery,
+      empQuery,
+      profQuery,
     ]);
 
     if (tasksRes.data) setTasks(tasksRes.data);
@@ -78,11 +96,11 @@ export default function CalendarPage() {
       
       setLeaveRequests(joinedLeaves);
     }
-  }, [currentDate, role, user?.id]);
+  }, [currentDate, role, user?.id, orgId]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (orgId) fetchData();
+  }, [fetchData, orgId]);
 
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
@@ -143,6 +161,7 @@ export default function CalendarPage() {
       status: "todo",
       due_date: selectedDate,
       created_by: user?.id || null,
+      organization_id: orgId as string,
     }]);
     if (!error) {
       setNewTask({ title: "", description: "", priority: "medium" });

@@ -172,18 +172,19 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
   }, [channelId, fetchChannelDetails, fetchMessages, fetchParticipants, fetchParticipantRoles, fetchNewMessage, toast]);
 
   const fetchAvailableUsers = useCallback(async () => {
-    if (!user) return;
+    if (!user || !orgId) return;
     // Fetch all users who are NOT in the current participants list
     const participantIds = participants.map(p => p.user_id);
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name, email');
+      .select('id, full_name, email')
+      .eq('organization_id', orgId);
 
     if (data) {
       const filtered = data.filter(u => !participantIds.includes(u.id));
       setAvailableUsers(filtered);
     }
-  }, [user, participants]);
+  }, [user, participants, orgId]);
 
   useEffect(() => {
     if (isAddMemberOpen) {
@@ -196,9 +197,14 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
   }, [participants, fetchParticipantRoles]);
 
   const addMember = useCallback(async (userId: string) => {
+    if (!orgId) return;
     const { error } = await supabase
       .from('chat_participants')
-      .insert({ channel_id: channelId, user_id: userId });
+      .insert({ 
+        channel_id: channelId, 
+        user_id: userId,
+        organization_id: orgId
+      });
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -207,7 +213,7 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
       setIsAddMemberOpen(false);
       fetchParticipants();
     }
-  }, [channelId, toast, fetchParticipants]);
+  }, [channelId, toast, fetchParticipants, orgId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -217,14 +223,15 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
 
   const sendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user) return;
+    if (!newMessage.trim() || !user || !orgId) return;
 
     const { data, error } = await supabase
       .from('chat_messages')
       .insert({
         channel_id: channelId,
         sender_id: user.id,
-        content: newMessage
+        content: newMessage,
+        organization_id: orgId
       } as Database['public']['Tables']['chat_messages']['Insert'])
       .select(`
         *,
@@ -247,7 +254,7 @@ export function ChatWindow({ channelId }: ChatWindowProps) {
       // Trigger update on channel timestamp
       await supabase.from('chat_channels').update({ updated_at: new Date().toISOString() }).eq('id', channelId);
     }
-  }, [newMessage, user, channelId, toast]);
+  }, [newMessage, user, channelId, toast, orgId]);
 
   const filteredAvailableUsers = availableUsers.filter(u => 
     (u.full_name?.toLowerCase() || "").includes(search.toLowerCase()) || 

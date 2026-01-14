@@ -54,6 +54,20 @@ export function AppHeader() {
     // Navigate based on entity type
     if (n.entity_type === 'chat_channel' && n.entity_id) {
       navigate(`/chat?channelId=${n.entity_id}`);
+      return;
+    }
+    if (n.type === 'user_invite' && n.entity_id && user?.id) {
+      const accepted = window.confirm("Accept invite to join organization?");
+      if (!accepted) return;
+      const orgId = String(n.entity_id);
+      const roleMatch = String(n.body || "").match(/role:([a-z_]+)/i);
+      const role = roleMatch ? roleMatch[1] : "employee";
+      if (orgId) {
+        const { error: profErr } = await supabase.from("profiles").update({ organization_id: orgId }).eq("id", user.id);
+        const { error: roleErr } = await supabase.from("user_roles").insert([{ user_id: user.id, organization_id: orgId, role }]);
+        fetchNotifications();
+        navigate("/dashboard");
+      }
     }
   };
 

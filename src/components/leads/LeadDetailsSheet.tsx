@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { LeadWithDetails } from "@/types/app";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface LeadDetailsSheetProps {
   lead: LeadWithDetails | null;
@@ -40,6 +41,7 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
   const [commentText, setCommentText] = useState("");
   const [profiles, setProfiles] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
   const [commentMention, setCommentMention] = useState<string>("");
+  const { orgId } = usePermissions();
 
   const fetchActivities = useCallback(async () => {
     if (!lead) return;
@@ -69,12 +71,16 @@ export function LeadDetailsSheet({ lead, open, onOpenChange }: LeadDetailsSheetP
   }, [lead]);
 
   const fetchProfiles = useCallback(async () => {
-    const { data } = await supabase
+    let builder = supabase
       .from("profiles")
       .select("id, full_name, email")
       .order("full_name");
+    if (orgId) {
+      builder = builder.eq("organization_id", orgId as string);
+    }
+    const { data } = await builder;
     setProfiles(data || []);
-  }, []);
+  }, [orgId]);
 
   useEffect(() => {
     if (lead?.id && open) {

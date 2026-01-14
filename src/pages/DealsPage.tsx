@@ -33,6 +33,7 @@ const stages = [
 
 export default function DealsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const { can, role, orgId } = usePermissions();
   const [deals, setDeals] = useState<DealWithDetails[]>([]);
@@ -96,16 +97,19 @@ export default function DealsPage() {
   }, [fetchDeals]);
 
   async function fetchEmployees() {
+    if (!orgId) return;
     const { data } = await supabase.from("profiles").select("id, full_name, email").eq("organization_id", orgId as string);
     if (data) setEmployees(data);
   }
 
   async function fetchCompanies() {
+    if (!orgId) return;
     const { data } = await supabase.from("companies").select("id, name").eq("organization_id", orgId as string).order("name");
     if (data) setCompanies(data);
   }
 
   async function fetchContacts() {
+    if (!orgId) return;
     const { data } = await supabase.from("contacts").select("id, first_name, last_name").eq("organization_id", orgId as string).order("first_name");
     if (data) setContacts(data);
   }

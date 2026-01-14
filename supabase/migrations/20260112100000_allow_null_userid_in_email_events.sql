@@ -1,0 +1,5 @@
+BEGIN;
+
+ALTER TABLE public.email_events ALTER COLUMN user_id DROP NOT NULL;
+
+COMMIT;

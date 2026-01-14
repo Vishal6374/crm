@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Folder, Trash2, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tables } from "@/integrations/supabase/types";
@@ -16,7 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function ProjectsPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { can, orgId } = usePermissions();
+  const { can, orgId, role } = usePermissions();
   const { user } = useAuth();
   const [projects, setProjects] = useState<Tables<'projects'>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,11 +25,12 @@ export default function ProjectsPage() {
   const [formData, setFormData] = useState({ name: "", description: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  async function fetchProjects() {
+  const fetchProjects = useCallback(async () => {
+    if (!orgId) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
     let builder = supabase
       .from("projects")
       .select("*")
@@ -40,12 +41,20 @@ export default function ProjectsPage() {
     const { data, error } = await builder;
     if (!error) setProjects(data || []);
     setLoading(false);
-  }
+  }, [orgId]);
+
+  useEffect(() => {
+    if (orgId) fetchProjects();
+  }, [orgId, fetchProjects]);
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
-    if (!can("projects", "can_create")) {
+    if (!(role === "admin" || role === "manager")) {
       toast({ title: "Not allowed", description: "You do not have permission to create projects.", variant: "destructive" });
+      return;
+    }
+    if (!orgId) {
+      toast({ title: "Invalid context", description: "No organization selected.", variant: "destructive" });
       return;
     }
     const { data: created, error } = await supabase.from("projects").insert([{
@@ -83,9 +92,11 @@ export default function ProjectsPage() {
       toast({ title: "Not allowed", description: "You do not have permission to edit projects.", variant: "destructive" });
       return;
     }
+    if (!orgId) return;
     const { error } = await supabase.from("projects")
       .update({ name: formData.name, description: formData.description || null })
-      .eq("id", editingId);
+      .eq("id", editingId)
+      .eq("organization_id", orgId as string);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -102,7 +113,8 @@ export default function ProjectsPage() {
       toast({ title: "Not allowed", description: "You do not have permission to delete projects.", variant: "destructive" });
       return;
     }
-    const { error } = await supabase.from("projects").delete().eq("id", id);
+    if (!orgId) return;
+    const { error } = await supabase.from("projects").delete().eq("id", id).eq("organization_id", orgId as string);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -150,6 +162,7 @@ export default function ProjectsPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingId ? "Edit Project" : "Create Project"}</DialogTitle>
+              <DialogDescription>Provide basic details for your project.</DialogDescription>
             </DialogHeader>
             <form onSubmit={editingId ? updateProject : createProject} className="space-y-4">
               <div><Label>Name</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></div>

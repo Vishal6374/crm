@@ -49,6 +49,11 @@ export default function LeaveRequestsPage() {
 
 
   const fetchLeaveRequests = useCallback(async () => {
+    if (!orgId) {
+      setLeaveRequests([]);
+      setLoading(false);
+      return;
+    }
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id")
@@ -93,6 +98,7 @@ export default function LeaveRequestsPage() {
   }, [role, user?.id, orgId]);
 
   const fetchEmployees = useCallback(async () => {
+    if (!orgId) return;
     const { data: empsData } = await supabase
       .from("employees")
       .select("id, employee_id, user_id, status")
@@ -124,18 +130,31 @@ export default function LeaveRequestsPage() {
     fetchLeaveRequests();
     fetchEmployees();
   }, [fetchLeaveRequests, fetchEmployees]);
+  
+  useEffect(() => {
+    if (dialogOpen && role === "employee" && employees.length === 1) {
+      setFormData((prev) => ({ ...prev, employee_id: employees[0].id }));
+    }
+  }, [dialogOpen, role, employees]);
+
   async function createLeaveRequest(e: React.FormEvent) {
     e.preventDefault();
     if (!can("leave_requests", "can_create")) {
       toast({ title: "Not allowed", description: "You do not have permission to create leave requests.", variant: "destructive" });
       return;
     }
+    const employeeIdToUse = formData.employee_id || (role === "employee" && employees[0]?.id) || "";
+    if (!employeeIdToUse) {
+      toast({ title: "Missing employee", description: "Could not determine your employee record.", variant: "destructive" });
+      return;
+    }
     const { error } = await supabase.from("leave_requests").insert([{
-      employee_id: formData.employee_id,
+      employee_id: employeeIdToUse,
       leave_type: formData.leave_type as "annual" | "sick" | "maternity" | "paternity" | "emergency",
       start_date: formData.start_date,
       end_date: formData.end_date,
       reason: formData.reason,
+      organization_id: orgId as string,
     }]);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -188,6 +207,7 @@ export default function LeaveRequestsPage() {
                 check_in: null,
                 check_out: null,
                 notes: `Leave: ${lr.leave_type}`,
+                organization_id: orgId as string,
               }]);
             }
           }
@@ -197,6 +217,7 @@ export default function LeaveRequestsPage() {
             entity_id: lr.id,
             description: `Attendance updated for approved leave`,
             user_id: user?.id || null,
+            organization_id: orgId as string,
           }]);
         }
       }
@@ -241,7 +262,9 @@ export default function LeaveRequestsPage() {
               <div>
                 <Label>Employee</Label>
                 <Select value={formData.employee_id} onValueChange={(v) => setFormData({ ...formData, employee_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+                  <SelectTrigger disabled={role === "employee"}>
+                    <SelectValue placeholder="Select employee" />
+                  </SelectTrigger>
                   <SelectContent>
                     {employees.map((e) => (
                       <SelectItem key={e.id} value={e.id}>
